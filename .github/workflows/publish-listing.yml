@@ -1,0 +1,42 @@
+name: Play-Listing veröffentlichen
+
+on:
+  workflow_dispatch:
+    inputs:
+      track:
+        description: Track
+        default: internal
+        type: choice
+        options: [internal, alpha, beta, production]
+      dry_run:
+        description: Nur prüfen, nicht veröffentlichen
+        default: true
+        type: boolean
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: tools/play-publish/package.json
+
+      - name: Abhängigkeiten
+        working-directory: tools/play-publish
+        run: npm install --no-audit --no-fund
+
+      - name: Hochladen
+        working-directory: tools/play-publish
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.PLAY_SERVICE_ACCOUNT_KEY }}
+          PACKAGE_NAME: ${{ vars.PACKAGE_NAME }}
+        run: |
+          node publish.js \
+            --metadata ../../fastlane/metadata/android \
+            --track "${{ inputs.track }}" \
+            ${{ inputs.dry_run && '--dry-run' || '' }}
+            
