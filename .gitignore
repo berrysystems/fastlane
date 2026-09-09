@@ -1,0 +1,19 @@
+# Abhängigkeiten
+node_modules/
+
+# Zugangsdaten — dürfen niemals ins Repo
+.env
+.env.local
+*-key.json
+play-key.json
+service-account*.json
+
+# Build-Artefakte
+*.aab
+*.apk
+*.keystore
+*.jks
+
+# Betriebssystem
+.DS_Store
+Thumbs.db

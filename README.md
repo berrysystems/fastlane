@@ -1,97 +1,56 @@
-# Play-Listing veröffentlichen
+# Play-Listing-Toolkit
 
-Lädt die Texte, Listing-Bilder und optional ein App Bundle über die
-Google Play Developer API hoch — aus dem ZIP, das der Asset-Generator ausgibt.
+Erzeugt die Assets und Texte für einen Play-Store-Eintrag und lädt sie hoch.
 
-Alles passiert in einem einzigen Edit. Schlägt ein Schritt fehl, wird der Edit
-verworfen und im Store ändert sich nichts.
+Zwei getrennte Teile:
 
-## Einrichten
+- **`docs/index.html`** — ein Werkzeug, das komplett im Browser läuft. Rahmt
+  Screenshots, baut die Feature Graphic, erzeugt den Icon-Satz, prüft die
+  Store-Texte und exportiert alles als ZIP.
+- **`tools/play-publish/`** — ein Node-Skript, das dieses Ergebnis über die
+  Google Play Developer API in die Console schiebt.
 
-**1. Service-Account anlegen**
+## Schnellstart
 
-In der Google Cloud Console ein Projekt wählen, die *Google Play Android
-Developer API* aktivieren, unter *IAM & Verwaltung → Dienstkonten* ein Konto
-anlegen und einen JSON-Schlüssel erzeugen.
+Nur ausprobieren: `docs/index.html` doppelklicken. Es braucht keinen Server,
+und es verlässt nichts deinen Rechner.
 
-**2. In der Play Console verknüpfen**
+Als Seite bereitstellen: siehe [SETUP.md](SETUP.md).
 
-*Einstellungen → API-Zugriff*, das Dienstkonto einladen und ihm für deine App
-mindestens die Rechte *Store-Eintrag bearbeiten* und, falls du Binaries
-hochlädst, *Releases verwalten* geben. Die Freischaltung braucht manchmal ein
-paar Minuten.
+Hochladen einrichten: siehe [tools/play-publish/README.md](tools/play-publish/README.md).
 
-**3. Installieren**
+## Was das Browser-Tool kann
 
-```bash
-cd tools/play-publish
-npm install
-cp .env.example .env      # und den Schlüssel eintragen
-```
+**Screenshots** — fünf Layouts, Panorama über mehrere Frames, saubere
+Statusleiste statt der aufgenommenen, Vorschau in Thumbnail-Größe, damit du
+siehst, ob die Caption in den Suchergebnissen noch lesbar ist.
 
-## Benutzen
+**Feature Graphic** — 1024 × 500, mit Sicherheitsbereich für den Beschnitt.
 
-```bash
-# Erst prüfen — validiert lokal und bei Google, committet nichts
-node publish.js --package com.example.app --dry-run
+**Icon** — Store-Icon 512 × 512 plus den adaptiven Launcher-Satz in allen
+fünf Dichten, samt Monochrome-Ebene und `ic_launcher.xml`. Die Vorschau zeigt
+das Ergebnis unter Kreis-, Squircle- und Rechteckmaske.
 
-# Nur den Store-Eintrag aktualisieren
-node publish.js --package com.example.app
+**Farben** — zieht die Palette aus deinem Logo und prüft den Kontrast der
+Caption gegen den Hintergrund.
 
-# Mit Bundle, gestufter Rollout auf zehn Prozent
-node publish.js --package com.example.app \
-  --aab app/build/outputs/bundle/release/app-release.aab \
-  --track production --rollout 0.1
-```
+**Texte** — Zeichenzähler auf die Limits der Console, Vorschau mit denselben
+Abschnitten wie im Store, und eine Prüfung auf Formulierungen, die bei der
+Review auffallen.
 
-Weitere Optionen zeigt `node publish.js --help`.
+**Projekt speichern** — eine JSON-Datei mit allem drin, für das nächste
+Release.
 
-## Was vorher geprüft wird
+## Ablauf bei einem Release
 
-Bevor überhaupt ein Request rausgeht, liest das Skript die Bildheader und die
-Textlängen. Das fängt die Fehler ab, die Google sonst erst nach dem Upload mit
-einer knappen Meldung quittiert:
-
-- Icon exakt 512 × 512 und unter 1 MB
-- Feature Graphic exakt 1024 × 500
-- Screenshots zwischen 320 und 3840 px, Seitenverhältnis höchstens 2:1, ohne Alphakanal
-- mindestens 2 und höchstens 8 Phone-Screenshots
-- Titel 30, Kurzbeschreibung 80, Beschreibung 4000 Zeichen
-
-## Erwartete Ordnerstruktur
-
-```
-fastlane/metadata/android/
-  de-DE/
-    title.txt
-    short_description.txt
-    full_description.txt
-    changelogs/default.txt
-    images/
-      icon.png
-      featureGraphic.jpg
-      phoneScreenshots/       1_*.jpg … 8_*.jpg
-      sevenInchScreenshots/   optional
-      tenInchScreenshots/     optional
-```
-
-Die Screenshots werden natürlich sortiert, `10_` landet also hinter `9_`.
-Vor jedem Upload räumt das Skript den jeweiligen Bildtyp per `deleteall` ab,
-sonst sammeln sich alte Screenshots im Eintrag an.
-
-## In der CI
-
-`.github/workflows/publish-listing.yml` ist vorbereitet. Es erwartet:
-
-- Secret `PLAY_SERVICE_ACCOUNT_KEY` — der komplette JSON-Inhalt
-- Variable `PACKAGE_NAME`
-
-Der Workflow läuft manuell über *Actions → Run workflow*, standardmäßig als
-Probelauf. Erst wenn du den Haken entfernst, wird veröffentlicht.
+1. Seite öffnen, Screenshots und Texte pflegen, ZIP exportieren
+2. Den Ordner `fastlane/` aus dem ZIP ins Repo legen und committen
+3. `node tools/play-publish/publish.js --package … --dry-run` — prüft lokal
+   und bei Google, veröffentlicht nichts
+4. Ohne `--dry-run` erneut ausführen, oder den Workflow in Actions starten
 
 ## Grenzen
 
-Die API kann einen Eintrag nur aktualisieren, nicht anlegen. Die allererste
-Veröffentlichung machst du von Hand in der Console. Ebenfalls dort und nicht
-über dieses Skript: Datenschutz-URL, Data-Safety-Formular und
-Inhaltseinstufung.
+Die API kann einen Eintrag nur aktualisieren, nicht anlegen. Die erste
+Veröffentlichung machst du von Hand in der Console. Ebenso Datenschutz-URL,
+Data-Safety-Formular und Inhaltseinstufung.
