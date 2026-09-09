@@ -1,0 +1,16 @@
+{
+  "name": "play-publish",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Lädt Store-Texte, Listing-Bilder und optional ein App Bundle über die Play Developer API hoch.",
+  "main": "publish.js",
+  "scripts": {
+    "check": "node publish.js --dry-run",
+    "publish:internal": "node publish.js --track internal",
+    "publish:production": "node publish.js --track production"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "googleapis": "^176.0.0"
+  }
+}

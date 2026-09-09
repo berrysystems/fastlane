@@ -39,4 +39,3 @@ jobs:
             --metadata ../../fastlane/metadata/android \
             --track "${{ inputs.track }}" \
             ${{ inputs.dry_run && '--dry-run' || '' }}
-            
