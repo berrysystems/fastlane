@@ -1,0 +1,59 @@
+name: Seite veröffentlichen
+
+# Baut den Inhalt von docs/ und stellt ihn über GitHub Pages bereit.
+# Anders als "Deploy from a branch" läuft das über Actions — damit kannst du
+# später einen Build-Schritt einschieben, ohne den Ablauf umzustellen.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch:
+
+# Nur lesen, plus die beiden Rechte, die Pages selbst braucht.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Läuft ein Deploy bereits, wird es nicht abgebrochen, sondern der neue
+# Lauf wartet. Sonst kann eine halb fertige Version live gehen.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Vorhandensein von docs/index.html prüfen
+        run: |
+          if [ ! -f docs/index.html ]; then
+            echo "docs/index.html fehlt — Pages hätte nichts auszuliefern."
+            exit 1
+          fi
+
+      # Hier später einen Build einschieben, falls docs/ generiert wird:
+      # - uses: actions/setup-node@v4
+      #   with: { node-version: 20, cache: npm }
+      # - run: npm ci && npm run build
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

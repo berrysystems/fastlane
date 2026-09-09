@@ -1,0 +1,1575 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Play-Store-Listing — Assets &amp; Texte</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root{
+    --ink:#131A24; --ink-soft:#5A6672;
+    --backdrop:#DDE2E7; --panel:#FFFFFF;
+    --line:rgba(19,26,36,.14); --line-soft:rgba(19,26,36,.07);
+    --accent:#4B33D8; --accent-warm:#FF6B35; --ok:#1B7F5A;
+    --radius:10px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--backdrop);color:var(--ink);font-family:"DM Sans",system-ui,sans-serif;font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+
+  .masthead{padding:24px 22px 16px;border-bottom:1px solid var(--line);background:var(--panel);display:flex;justify-content:space-between;gap:20px;align-items:flex-start;flex-wrap:wrap}
+  .masthead h1{font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:clamp(23px,4.6vw,32px);letter-spacing:-.02em;margin:0 0 5px}
+  .masthead p{margin:0;color:var(--ink-soft);max-width:56ch}
+  .eyebrow{font-family:"DM Mono",monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin:0 0 9px}
+
+  /* live readiness meter — the listing's own checklist, not decoration */
+  .readout{display:flex;gap:0;align-items:stretch;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:#FAFBFC}
+  .readout div{padding:9px 13px;font-family:"DM Mono",monospace;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);border-right:1px solid var(--line-soft);display:flex;flex-direction:column;gap:3px;min-width:78px}
+  .readout div:last-child{border-right:none}
+  .readout b{font-size:15px;font-family:"DM Sans",sans-serif;font-weight:700;color:var(--accent-warm);letter-spacing:0;text-transform:none}
+  .readout div.done b{color:var(--ok)}
+
+  .tabs{display:flex;gap:6px;padding:14px 22px 0;background:var(--panel);border-bottom:1px solid var(--line);overflow-x:auto}
+  .tab{appearance:none;border:1px solid transparent;border-bottom:none;background:none;font-family:"DM Mono",monospace;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);padding:10px 14px;cursor:pointer;border-radius:8px 8px 0 0;white-space:nowrap}
+  .tab[aria-selected="true"]{background:var(--backdrop);border-color:var(--line);color:var(--ink);margin-bottom:-1px}
+  .tab:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  .workspace{display:grid;grid-template-columns:minmax(300px,390px) 1fr;min-height:60vh}
+  @media (max-width:900px){.workspace{grid-template-columns:1fr}}
+  .controls{background:var(--panel);border-right:1px solid var(--line);padding:22px}
+  @media (max-width:900px){.controls{border-right:none;border-bottom:1px solid var(--line)}}
+  .single{background:var(--panel);padding:22px}
+
+  .field{margin-bottom:18px}
+  .field > label,.legend{display:block;font-family:"DM Mono",monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:7px}
+  input[type="text"],textarea,select{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:var(--radius);font-family:inherit;font-size:15px;color:var(--ink);background:#fff}
+  textarea{resize:vertical;min-height:120px;line-height:1.55}
+  input:focus-visible,textarea:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .row{display:flex;gap:10px}
+  .row > *{flex:1;min-width:0}
+  input[type="color"]{width:100%;height:40px;padding:3px;border:1px solid var(--line);border-radius:var(--radius);background:#fff;cursor:pointer}
+  input[type="range"]{width:100%;accent-color:var(--accent)}
+  .check{display:flex;align-items:flex-start;gap:9px;font-size:14px;margin-bottom:9px;cursor:pointer}
+  .check input{margin-top:3px;accent-color:var(--accent);flex:none}
+  .check span small{display:block;color:var(--ink-soft);font-size:12.5px;line-height:1.4}
+  .counter{font-family:"DM Mono",monospace;font-size:11px;color:var(--ink-soft);float:right;text-transform:none;letter-spacing:0}
+  .counter.over{color:var(--accent-warm);font-weight:500}
+
+  .btn{appearance:none;cursor:pointer;font-family:"DM Sans",sans-serif;font-weight:500;font-size:14px;padding:11px 16px;border-radius:var(--radius);border:1px solid var(--ink);background:var(--ink);color:#fff}
+  .btn:hover{background:#000}
+  .btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+  .btn.ghost:hover{background:var(--backdrop)}
+  .btn.wide{width:100%}
+  .btn + .btn{margin-top:9px}
+
+  .drop{border:1.5px dashed var(--line);border-radius:var(--radius);padding:22px 16px;text-align:center;color:var(--ink-soft);cursor:pointer;background:#FAFBFC}
+  .drop.hot{border-color:var(--accent);color:var(--accent);background:#F4F2FE}
+  .drop strong{display:block;color:var(--ink);font-weight:700}
+
+  .shotlist{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-direction:column;gap:10px}
+  .shotrow{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line-soft);border-radius:var(--radius);padding:9px;background:#FAFBFC}
+  .shotrow img{width:36px;height:64px;object-fit:cover;border-radius:4px;background:#ccc;flex:none}
+  .shotrow .grow{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+  .shotrow input[type="text"]{font-size:14px;padding:7px 9px}
+  .shotrow .sub{font-size:13px}
+  .rowtools{display:flex;flex-direction:column;gap:2px;flex:none}
+  .iconbtn{appearance:none;border:none;background:none;cursor:pointer;color:var(--ink-soft);font-size:15px;line-height:1;padding:3px 5px;border-radius:5px}
+  .iconbtn:hover{color:var(--accent);background:var(--backdrop)}
+  .iconbtn.del:hover{color:var(--accent-warm)}
+  .idx{font-family:"DM Mono",monospace;font-size:11px;color:var(--ink-soft)}
+  .idx b{color:var(--accent);font-weight:500}
+
+  .stage{padding:24px 22px 40px;background:
+      linear-gradient(var(--line-soft) 1px,transparent 1px) 0 0/100% 28px,
+      linear-gradient(90deg,var(--line-soft) 1px,transparent 1px) 0 0/28px 100%,
+      var(--backdrop);}
+  .stagehead{display:flex;justify-content:space-between;align-items:baseline;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+  .stagehead h2{font-family:"DM Mono",monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft);margin:0;font-weight:400}
+  .searchsim{display:flex;gap:8px;align-items:flex-end;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px}
+  .searchsim canvas{width:54px;height:auto;border-radius:3px;display:block;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+  .searchsim p{margin:0;font-family:"DM Mono",monospace;font-size:10.5px;color:var(--ink-soft);max-width:20ch;line-height:1.35}
+
+  .sheet{display:flex;flex-wrap:wrap;gap:34px;align-items:flex-start}
+  .sheet.pano{flex-wrap:nowrap;overflow-x:auto;padding-bottom:14px;gap:0}
+  .sheet.pano .plate + .plate{margin-left:2px}
+  .plate{position:relative;padding-top:22px}
+  .plate .frameinner{position:relative}
+  .plate canvas{display:block;background:#fff;box-shadow:0 12px 30px rgba(19,26,36,.18);border-radius:3px;max-width:100%;height:auto}
+  .sheet.pano .plate canvas{border-radius:0}
+  .plate .ruler{position:absolute;top:0;left:0;right:0;height:14px;border-left:1px solid var(--ink);border-right:1px solid var(--ink)}
+  .plate .ruler::after{content:"";position:absolute;top:50%;left:0;right:0;border-top:1px solid var(--ink);opacity:.45}
+  .plate .dim{position:absolute;top:-2px;left:50%;transform:translateX(-50%);background:var(--backdrop);padding:0 7px;font-family:"DM Mono",monospace;font-size:10.5px;letter-spacing:.08em;z-index:2}
+  .plate .cap{margin-top:9px;font-family:"DM Mono",monospace;font-size:11px;color:var(--ink-soft);display:flex;justify-content:space-between;gap:10px;align-items:center}
+  .plate .cap button{appearance:none;border:none;background:none;font-family:inherit;font-size:11px;color:var(--accent);cursor:pointer;text-decoration:underline;padding:0}
+  .shotplate canvas{width:214px}
+  .sheet.pano .shotplate canvas{width:190px}
+  .featplate canvas{width:min(560px,100%)}
+  .iconplate canvas{width:200px;border-radius:0}
+  .maskplate canvas{width:104px;box-shadow:none;background:transparent}
+
+  .guides{position:absolute;inset:0;pointer-events:none;display:none}
+  .showguides .guides{display:block}
+  .guides::before{content:"";position:absolute;inset:8% 8%;border:1px dashed rgba(255,60,0,.75)}
+  .iconguide{position:absolute;inset:0;pointer-events:none;display:none}
+  .showguides .iconguide{display:block}
+  .iconguide::before{content:"";position:absolute;inset:17%;border:1px dashed rgba(255,60,0,.8);border-radius:50%}
+
+  .empty{color:var(--ink-soft);font-family:"DM Mono",monospace;font-size:12.5px;border:1px dashed var(--line);border-radius:var(--radius);padding:34px 18px;text-align:center;width:100%}
+  .hint{margin-top:22px;padding-top:16px;border-top:1px solid var(--line-soft);font-size:13px;color:var(--ink-soft)}
+  .hint p{margin:0 0 9px}
+  .hint code{font-family:"DM Mono",monospace;font-size:12px;background:var(--backdrop);padding:2px 5px;border-radius:4px;display:inline-block;word-break:break-all;color:var(--ink)}
+  .hint ul{margin:0;padding-left:17px}
+  .hint li{margin-bottom:5px}
+  .swatches{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}
+
+  /* extracted brand palette */
+  .palette{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}
+  .chip{width:100%;max-width:56px;border:1px solid var(--line);border-radius:8px;padding:0;cursor:pointer;overflow:hidden;background:none;flex:1 1 46px}
+  .chip .fill{height:34px;display:block}
+  .chip .hex{display:block;font-family:"DM Mono",monospace;font-size:9.5px;padding:3px 0;background:#fff;color:var(--ink-soft);letter-spacing:-.02em}
+  .chip:hover .hex{color:var(--accent)}
+  .badge{display:inline-flex;align-items:center;gap:7px;font-family:"DM Mono",monospace;font-size:11px;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:#FAFBFC;margin-top:9px;width:100%}
+  .badge b{font-family:"DM Sans",sans-serif;font-size:13px;font-weight:700}
+  .badge.warn{border-color:rgba(255,107,53,.5);background:#FFF4EF;color:#8A3A12}
+  .badge.good{border-color:rgba(27,127,90,.4);background:#F0F8F4;color:var(--ok)}
+  .badge button{margin-left:auto;appearance:none;border:none;background:none;color:var(--accent);font-family:inherit;font-size:11px;cursor:pointer;text-decoration:underline;padding:0}
+
+  /* text linter */
+  .lint{list-style:none;margin:0;padding:0;font-size:13.5px}
+  .lint li{display:flex;gap:9px;padding:9px 0;border-bottom:1px solid var(--line-soft);align-items:baseline}
+  .lint li:last-child{border-bottom:none}
+  .lint .mark{font-family:"DM Mono",monospace;font-size:11px;flex:none;width:14px;color:var(--accent-warm)}
+  .lint li.info .mark{color:var(--ink-soft)}
+  .lint small{display:block;color:var(--ink-soft);font-size:12.5px}
+  .lint mark{background:#FFE8DC;color:#8A3A12;padding:0 3px;border-radius:3px}
+
+  /* play listing simulator */
+  .phone{width:100%;max-width:392px;margin:0 auto;background:#fff;border:1px solid var(--line);border-radius:22px;overflow:hidden;box-shadow:0 18px 44px rgba(19,26,36,.16)}
+  .phone .top{padding:20px 18px 14px;display:flex;gap:14px;align-items:center}
+  .phone .top canvas{width:64px;height:64px;border-radius:16px;flex:none;background:var(--backdrop)}
+  .phone .tt{min-width:0}
+  .phone .tt h4{margin:0;font-size:19px;font-family:"Bricolage Grotesque",sans-serif;font-weight:700;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .phone .tt p{margin:2px 0 0;font-size:13px;color:var(--accent)}
+  .phone .tt span{font-size:12px;color:var(--ink-soft)}
+  .phone .cta{margin:2px 18px 16px;background:var(--accent);color:#fff;text-align:center;padding:10px;border-radius:20px;font-weight:700;font-size:14px}
+  .phone .rail{display:flex;gap:9px;overflow-x:auto;padding:0 18px 16px}
+  .phone .rail canvas{width:118px;height:auto;border-radius:9px;flex:none;border:1px solid var(--line-soft)}
+  .phone .desc{padding:0 18px 20px;border-top:1px solid var(--line-soft);margin-top:2px;padding-top:16px}
+  .phone .desc h5{margin:0 0 7px;font-size:15px}
+  .phone .desc p{margin:0;font-size:13.5px;line-height:1.5;white-space:pre-wrap;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  .phone .desc a{color:var(--accent);font-size:13px;text-decoration:none;display:inline-block;margin-top:8px}
+  .simnote{font-family:"DM Mono",monospace;font-size:11px;color:var(--ink-soft);text-align:center;margin:14px auto 0;max-width:40ch;line-height:1.5}
+  .sw{width:26px;height:26px;border-radius:50%;border:1px solid var(--line);cursor:pointer;padding:0}
+
+  .tree{font-family:"DM Mono",monospace;font-size:12px;line-height:1.75;color:var(--ink-soft);background:#FAFBFC;border:1px solid var(--line-soft);border-radius:var(--radius);padding:14px 16px;overflow-x:auto;white-space:pre;margin:0}
+  .tree b{color:var(--ink);font-weight:500}
+  .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+  .card h3{font-family:"Bricolage Grotesque",sans-serif;font-size:17px;margin:0 0 4px;letter-spacing:-.01em}
+  .card > p{margin:0 0 14px;color:var(--ink-soft);font-size:13.5px}
+  .status{list-style:none;margin:0;padding:0;font-size:14px}
+  .status li{display:flex;gap:9px;padding:7px 0;border-bottom:1px solid var(--line-soft);align-items:baseline}
+  .status li:last-child{border-bottom:none}
+  .status .mark{font-family:"DM Mono",monospace;font-size:12px;color:var(--accent-warm);flex:none;width:16px}
+  .status li.done .mark{color:var(--ok)}
+  .status small{display:block;color:var(--ink-soft);font-size:12.5px}
+  [hidden]{display:none !important}
+  @media (prefers-reduced-motion:reduce){*{transition:none !important;animation:none !important}}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div>
+    <p class="eyebrow">Play Store · Listing-Werkbank</p>
+    <h1>Alle Assets und Texte für die Veröffentlichung</h1>
+    <p>Screenshots, Feature Graphic, Icon-Satz und Store-Texte an einem Ort — lokal im Browser, Export in der Ordnerstruktur, die Fastlane und Android Studio erwarten.</p>
+  </div>
+  <div class="readout" id="readout"></div>
+</header>
+
+<div class="tabs" role="tablist">
+  <button class="tab" role="tab" data-panel="shots" aria-selected="true">Screenshots</button>
+  <button class="tab" role="tab" data-panel="feat" aria-selected="false">Feature Graphic</button>
+  <button class="tab" role="tab" data-panel="icon" aria-selected="false">Icon</button>
+  <button class="tab" role="tab" data-panel="text" aria-selected="false">Texte</button>
+  <button class="tab" role="tab" data-panel="sim" aria-selected="false">Store-Seite</button>
+  <button class="tab" role="tab" data-panel="export" aria-selected="false">Export</button>
+</div>
+
+<!-- ============ SCREENSHOTS ============ -->
+<section class="workspace panel" id="panel-shots" role="tabpanel">
+  <div class="controls">
+    <div class="field">
+      <label for="file">Screenshots laden</label>
+      <div class="drop" id="drop" tabindex="0" role="button">
+        <strong>PNG oder JPG auswählen</strong>
+        Mehrere gleichzeitig · oder hierher ziehen
+      </div>
+      <input type="file" id="file" accept="image/*" multiple hidden>
+      <ul class="shotlist" id="shotlist"></ul>
+    </div>
+
+    <div class="field">
+      <label for="layout">Layout</label>
+      <select id="layout">
+        <option value="caption-top">Caption oben, Gerät zentriert</option>
+        <option value="caption-bottom">Gerät oben, Caption unten</option>
+        <option value="bleed">Großes Gerät, unten angeschnitten</option>
+        <option value="angled">Gerät angewinkelt</option>
+        <option value="bare">Ohne Rahmen, schwebende UI</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label class="check" for="pano">
+        <input type="checkbox" id="pano">
+        <span>Panorama über alle Frames
+          <small>Geräte werden an den Kanten angeschnitten. Frame 1 muss trotzdem allein funktionieren.</small>
+        </span>
+      </label>
+      <label class="check" for="guides">
+        <input type="checkbox" id="guides" checked>
+        <span>Sicheren Bereich einblenden<small>Nur Vorschau, nie im Export.</small></span>
+      </label>
+    </div>
+
+    <div class="field">
+      <label for="preset">Zielformat</label>
+      <select id="preset">
+        <option value="1080x1920">Phone — 1080 × 1920</option>
+        <option value="1242x2208">Phone groß — 1242 × 2208</option>
+        <option value="1200x1920">Tablet 7" — 1200 × 1920</option>
+        <option value="1600x2560">Tablet 10" — 1600 × 2560</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <span class="legend">Hintergrund</span>
+      <div class="row"><input type="color" id="bg1" value="#241B4D" aria-label="Farbe 1"><input type="color" id="bg2" value="#5B3DF5" aria-label="Farbe 2"></div>
+      <div class="swatches" id="swatches"></div>
+      <div class="palette" id="brandpalette"></div>
+      <div class="badge" id="contrast"></div>
+    </div>
+
+    <div class="field">
+      <label for="statusbar">Statusleiste im Gerät</label>
+      <select id="statusbar">
+        <option value="auto">Ersetzen — Farbe automatisch</option>
+        <option value="light">Ersetzen — helle Symbole</option>
+        <option value="dark">Ersetzen — dunkle Symbole</option>
+        <option value="off">Original behalten</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="croptop">Oben beschneiden <span id="cropval" style="font-family:'DM Mono',monospace">0 %</span></label>
+      <input type="range" id="croptop" min="0" max="12" value="0">
+    </div>
+
+    <div class="field">
+      <div class="row">
+        <div><label for="textcolor">Textfarbe</label><input type="color" id="textcolor" value="#FFFFFF"></div>
+        <div><label for="frame">Rahmen</label>
+          <select id="frame"><option value="dark">Dunkel</option><option value="light">Hell</option></select>
+        </div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="scale">Gerätegröße <span id="scaleval" style="font-family:'DM Mono',monospace">76 %</span></label>
+      <input type="range" id="scale" min="55" max="100" value="76">
+    </div>
+    <div class="field">
+      <label for="headsize">Schriftgröße Caption <span id="headval" style="font-family:'DM Mono',monospace">64 px</span></label>
+      <input type="range" id="headsize" min="36" max="110" value="64">
+    </div>
+    <button class="btn wide" id="dlall">Alle Screenshots herunterladen</button>
+
+    <div class="hint">
+      <p><strong>Was in Listings funktioniert:</strong></p>
+      <ul>
+        <li>Frame 1 bis 3 entscheiden — sie erscheinen in den Suchergebnissen, bevor jemand wischt.</li>
+        <li>Caption als Nutzen formulieren: „Jedes Workout mitschreiben“ statt „Dashboard“.</li>
+        <li>Der größere Teil der Fläche sollte echte App-UI sein, nicht Deko.</li>
+        <li>Mindestens 2 sind Pflicht, ab 4 im Hochformat für ein Featuring qualifiziert, maximal 8.</li>
+      </ul>
+      <p style="margin-top:12px"><strong>Screenshots vom Gerät holen:</strong></p>
+      <code>adb exec-out screencap -p &gt; shot1.png</code>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="stagehead">
+      <h2 id="stagelabel">Vorschau</h2>
+      <div class="searchsim" id="searchsim" hidden>
+        <div id="simshots" style="display:flex;gap:6px;align-items:flex-end"></div>
+        <p>So groß erscheinen die ersten drei in der Suche. Lesbar?</p>
+      </div>
+    </div>
+    <div class="sheet" id="sheet">
+      <p class="empty">Noch keine Screenshots geladen. Links Dateien auswählen, dann erscheint hier die Vorschau in Store-Auflösung.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FEATURE GRAPHIC ============ -->
+<section class="workspace panel" id="panel-feat" role="tabpanel" hidden>
+  <div class="controls">
+    <div class="field"><label for="ftitle">Titel</label><input type="text" id="ftitle" value="Deine App" maxlength="40"></div>
+    <div class="field"><label for="fsub">Untertitel</label><input type="text" id="fsub" value="Ein Satz, der sagt was sie tut" maxlength="70"></div>
+    <div class="field">
+      <label class="check" for="fusericon"><input type="checkbox" id="fusericon" checked><span>Icon aus dem Icon-Tab verwenden<small>Sonst separat ein Logo laden.</small></span></label>
+      <label class="check" for="fdevice"><input type="checkbox" id="fdevice"><span>Ersten Screenshot als Gerät zeigen</span></label>
+    </div>
+    <div class="field">
+      <span class="legend">Hintergrund</span>
+      <div class="row"><input type="color" id="fbg1" value="#241B4D" aria-label="Farbe links"><input type="color" id="fbg2" value="#5B3DF5" aria-label="Farbe rechts"></div>
+      <div class="swatches" id="fswatches"></div>
+    </div>
+    <div class="field">
+      <div class="row">
+        <div><label for="ftextcolor">Textfarbe</label><input type="color" id="ftextcolor" value="#FFFFFF"></div>
+        <div><label for="falign">Ausrichtung</label>
+          <select id="falign"><option value="left">Links</option><option value="center">Zentriert</option></select>
+        </div>
+      </div>
+    </div>
+    <button class="btn wide" id="fdl">Feature Graphic herunterladen</button>
+    <div class="hint"><p>1024 × 500, JPEG oder 24-Bit-PNG ohne Alphakanal. Text aus den äußeren zehn Prozent heraushalten — der Store beschneidet je nach Ansicht, und bei aktiviertem Vorschauvideo liegt mittig ein Play-Button darüber.</p></div>
+  </div>
+  <div class="stage">
+    <div class="sheet">
+      <div class="plate featplate showguides">
+        <div class="ruler"></div><span class="dim">1024 × 500</span>
+        <div class="frameinner"><canvas id="fcanvas" width="1024" height="500"></canvas><div class="guides"></div></div>
+        <div class="cap"><span id="fname">feature-graphic.jpg</span><button id="fdl2">Laden</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ICON ============ -->
+<section class="workspace panel" id="panel-icon" role="tabpanel" hidden>
+  <div class="controls">
+    <div class="field">
+      <label for="ilogo">Logo laden</label>
+      <div class="drop" id="ilogodrop" tabindex="0" role="button">
+        <strong>PNG oder SVG auswählen</strong>
+        Am besten freigestellt, ohne eigene Ecken oder Schatten
+      </div>
+      <input type="file" id="ilogo" accept="image/*" hidden>
+    </div>
+    <div class="field">
+      <span class="legend">Hintergrund der Ebene</span>
+      <div class="row"><input type="color" id="ibg1" value="#241B4D" aria-label="Farbe 1"><input type="color" id="ibg2" value="#5B3DF5" aria-label="Farbe 2"></div>
+      <div class="swatches" id="iswatches"></div>
+      <div class="palette" id="ipalette"></div>
+    </div>
+    <div class="field">
+      <label for="izoom">Logogröße <span id="izoomval" style="font-family:'DM Mono',monospace">72 %</span></label>
+      <input type="range" id="izoom" min="35" max="100" value="72">
+    </div>
+    <div class="field">
+      <label for="imono">Farbe der Monochrome-Ebene</label>
+      <input type="color" id="imono" value="#000000">
+    </div>
+    <button class="btn wide" id="idlstore">Store-Icon 512 × 512 laden</button>
+    <button class="btn ghost wide" id="idlall">Alle Launcher-Dichten als ZIP</button>
+
+    <div class="hint">
+      <p><strong>Zwei getrennte Assets, häufig verwechselt:</strong></p>
+      <ul>
+        <li>Das Store-Icon ist 512 × 512, 32-Bit-PNG, unter 1 MB. Google rundet die Ecken selbst — nichts vorrunden, keine eigenen Schatten. Sicherheitshalber deckend exportieren.</li>
+        <li>Das Launcher-Icon ist adaptiv: Vordergrund und Hintergrund je 108 dp, dazu ab Android 13 eine Monochrome-Ebene für themed icons.</li>
+        <li>Alles Markenrelevante gehört in den mittleren Kreis — die Hersteller maskieren unterschiedlich, Pixel anders als Samsung.</li>
+        <li>Text im Icon fast immer weglassen. Bei 48 dp ist er unlesbar, Ausnahme ist ein einzelner Buchstabe.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="stage">
+    <div class="stagehead"><h2>Store-Icon, Launcher-Ebenen und Masken</h2></div>
+    <div class="sheet" id="iconsheet">
+      <div class="plate iconplate showguides">
+        <div class="ruler"></div><span class="dim">512 × 512</span>
+        <div class="frameinner"><canvas id="icStore" width="512" height="512"></canvas><div class="guides"></div></div>
+        <div class="cap"><span>icon.png</span><span>Store</span></div>
+      </div>
+      <div class="plate iconplate showguides">
+        <div class="ruler"></div><span class="dim">108 dp</span>
+        <div class="frameinner"><canvas id="icFg" width="432" height="432"></canvas><div class="iconguide"></div></div>
+        <div class="cap"><span>ic_launcher_foreground</span><span>Ebene</span></div>
+      </div>
+      <div class="plate maskplate">
+        <span class="dim" style="position:static;display:block;text-align:center;margin-bottom:6px;background:none">Masken</span>
+        <div style="display:flex;gap:14px">
+          <div><canvas id="icCircle" width="432" height="432"></canvas><div class="cap" style="justify-content:center">Kreis</div></div>
+          <div><canvas id="icSquircle" width="432" height="432"></canvas><div class="cap" style="justify-content:center">Squircle</div></div>
+          <div><canvas id="icRound" width="432" height="432"></canvas><div class="cap" style="justify-content:center">Rechteck</div></div>
+        </div>
+      </div>
+      <div class="plate maskplate">
+        <span class="dim" style="position:static;display:block;text-align:center;margin-bottom:6px;background:none">Klein &amp; Monochrom</span>
+        <div style="display:flex;gap:14px;align-items:flex-end">
+          <div><canvas id="icSmall" width="48" height="48" style="width:48px;image-rendering:auto"></canvas><div class="cap" style="justify-content:center">48 px</div></div>
+          <div><canvas id="icMono" width="432" height="432" style="width:72px"></canvas><div class="cap" style="justify-content:center">Themed</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TEXTE ============ -->
+<section class="workspace panel" id="panel-text" role="tabpanel" hidden>
+  <div class="controls">
+    <div class="field">
+      <label for="mLocale">Sprache des Listings</label>
+      <select id="mLocale">
+        <option value="de-DE">Deutsch (de-DE)</option>
+        <option value="en-US">Englisch (en-US)</option>
+        <option value="fr-FR">Französisch (fr-FR)</option>
+        <option value="es-ES">Spanisch (es-ES)</option>
+        <option value="it-IT">Italienisch (it-IT)</option>
+        <option value="tr-TR">Türkisch (tr-TR)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="mPackage">Paketname</label>
+      <input type="text" id="mPackage" value="com.example.app" spellcheck="false">
+    </div>
+    <div class="hint" style="border-top:none;margin-top:0;padding-top:0">
+      <p><strong>Wo die Texte auftauchen:</strong></p>
+      <ul>
+        <li>Der Name steht neben dem Icon in den Suchergebnissen — die ersten Wörter zählen.</li>
+        <li>Die Kurzbeschreibung erscheint direkt unter dem Titel und ist der einzige Fließtext, den viele je lesen.</li>
+        <li>Von der langen Beschreibung sieht man zunächst nur die ersten drei Zeilen, der Rest liegt hinter „Mehr ansehen“.</li>
+        <li>Keine Superlative, keine Preisangaben, keine Emoji-Ketten und keine Behauptungen über Rankings — das kollidiert mit den Richtlinien.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="stage">
+    <div class="cols">
+      <div class="card">
+        <h3>Store-Eintrag</h3>
+        <p>Die Zeichenzahlen sind harte Limits der Play Console.</p>
+        <div class="field">
+          <label for="mTitle">App-Name <span class="counter" id="cTitle">0 / 30</span></label>
+          <input type="text" id="mTitle" placeholder="Kurz und eindeutig">
+        </div>
+        <div class="field">
+          <label for="mShort">Kurzbeschreibung <span class="counter" id="cShort">0 / 80</span></label>
+          <textarea id="mShort" style="min-height:64px" placeholder="Ein Satz zum Nutzen, nicht zur Technik"></textarea>
+        </div>
+        <div class="field">
+          <label for="mFull">Vollständige Beschreibung <span class="counter" id="cFull">0 / 4000</span></label>
+          <textarea id="mFull" style="min-height:220px" placeholder="Erste drei Zeilen: das Versprechen. Danach Funktionen, Zielgruppe, Datenschutz."></textarea>
+        </div>
+        <div class="field">
+          <label for="mWhats">Was ist neu <span class="counter" id="cWhats">0 / 500</span></label>
+          <textarea id="mWhats" style="min-height:80px" placeholder="Änderungen dieser Version"></textarea>
+        </div>
+        <button class="btn ghost wide" id="mGerüst">Gerüst für die Beschreibung einsetzen</button>
+      </div>
+      <div class="card">
+        <h3>Vorschau im Store</h3>
+        <p>So schneidet der Store ab.</p>
+        <div style="border:1px solid var(--line);border-radius:var(--radius);padding:14px;background:#FAFBFC">
+          <div style="display:flex;gap:12px;align-items:center">
+            <canvas id="mIcon" width="512" height="512" style="width:56px;height:56px;border-radius:14px;background:#DDE2E7;flex:none"></canvas>
+            <div style="min-width:0">
+              <div id="pvTitle" style="font-weight:700;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">App-Name</div>
+              <div id="pvShort" style="color:var(--ink-soft);font-size:13px;line-height:1.35;max-height:2.7em;overflow:hidden">Kurzbeschreibung</div>
+            </div>
+          </div>
+          <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line-soft)">
+            <div id="pvFull" style="font-size:13.5px;color:var(--ink);white-space:pre-wrap;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">Die ersten drei Zeilen deiner Beschreibung.</div>
+            <div style="color:var(--accent);font-size:13px;margin-top:6px">Mehr ansehen</div>
+          </div>
+        </div>
+        <div class="hint" style="margin-top:16px">
+          <p>Die Suchrelevanz zieht Play vor allem aus Name und Kurzbeschreibung. Setze das wichtigste Suchwort dorthin, natürlich formuliert — Keyword-Stapel werden abgestraft.</p>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Prüfung</h3>
+        <p>Formulierungen, die in der Review auffallen oder im Store abgeschnitten werden.</p>
+        <ul class="lint" id="lintlist"></ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ STORE-SEITE ============ -->
+<section class="panel single" id="panel-sim" role="tabpanel" hidden>
+  <div class="phone">
+    <div class="top">
+      <canvas id="simIcon" width="512" height="512"></canvas>
+      <div class="tt">
+        <h4 id="simTitle">App-Name</h4>
+        <p id="simDev">Dein Entwicklername</p>
+        <span id="simMeta">Enthält Werbung · In-App-Käufe</span>
+      </div>
+    </div>
+    <div class="cta">Installieren</div>
+    <div class="rail" id="simRail"></div>
+    <div class="desc">
+      <h5>Über diese App</h5>
+      <p id="simShort">Kurzbeschreibung</p>
+      <a href="#" onclick="return false">Mehr ansehen</a>
+    </div>
+  </div>
+  <p class="simnote">Genau dieser Ausschnitt entscheidet. Wenn Icon und erster Screenshot hier nicht zusammen funktionieren, hilft kein Text weiter unten.</p>
+</section>
+
+<!-- ============ EXPORT ============ -->
+<section class="panel single" id="panel-export" role="tabpanel" hidden>
+  <div class="cols">
+    <div class="card">
+      <h3>Stand der Dinge</h3>
+      <p>Was die Play Console verlangt, bevor du einreichen kannst.</p>
+      <ul class="status" id="statuslist"></ul>
+    </div>
+    <div class="card">
+      <h3>Alles exportieren</h3>
+      <p>Ein ZIP mit Fastlane-Metadaten und den Launcher-Ressourcen. Entpacken und in dein Projekt legen.</p>
+      <button class="btn wide" id="zipall">Komplettes Paket als ZIP</button>
+      <button class="btn ghost wide" id="zipmeta">Nur Texte und Store-Assets</button>
+      <hr style="border:none;border-top:1px solid var(--line-soft);margin:18px 0">
+      <button class="btn ghost wide" id="projsave">Projekt speichern (.json)</button>
+      <button class="btn ghost wide" id="projload">Projekt laden</button>
+      <input type="file" id="projfile" accept="application/json,.json" hidden>
+      <p style="margin-top:12px;font-size:13px;color:var(--ink-soft)">Enthält Bilder, Captions, Farben und Texte. Beim nächsten Release wieder laden, statt neu anzufangen.</p>
+      <p style="margin-top:14px;font-size:13px;color:var(--ink-soft)">Danach lädt <code style="font-family:'DM Mono',monospace">fastlane supply</code> die Metadaten hoch, ohne dass du in der Console klickst.</p>
+    </div>
+    <div class="card">
+      <h3>Struktur im ZIP</h3>
+      <p>Pfade, die Fastlane und Android Studio erwarten.</p>
+      <pre class="tree" id="tree"></pre>
+    </div>
+  </div>
+</section>
+
+<script>
+(function(){
+  "use strict";
+
+  var PALETTES = [
+    ["#241B4D","#5B3DF5"],["#0B2027","#1E7A6F"],["#2A0E36","#C2185B"],
+    ["#12212E","#2F6FED"],["#3A1C0B","#F2711C"],["#F5F1EA","#D9CFC0"],
+    ["#101418","#3A424C"]
+  ];
+  var RATIO = 19.5/9;
+  var DENS = [["mdpi",1],["hdpi",1.5],["xhdpi",2],["xxhdpi",3],["xxxhdpi",4]];
+
+  var shots = [], nextId = 1, iconLogo = null, featLogo = null, booted = false;
+  var $ = function(id){ return document.getElementById(id); };
+
+  /* ---------- tabs ---------- */
+  Array.prototype.forEach.call(document.querySelectorAll(".tab"), function(t){
+    t.addEventListener("click", function(){
+      Array.prototype.forEach.call(document.querySelectorAll(".tab"), function(o){
+        o.setAttribute("aria-selected", String(o === t));
+      });
+      Array.prototype.forEach.call(document.querySelectorAll(".panel"), function(p){
+        p.hidden = p.id !== "panel-"+t.dataset.panel;
+      });
+      if(t.dataset.panel === "feat") drawFeature();
+      if(t.dataset.panel === "icon") drawIcons();
+      if(t.dataset.panel === "export"){ renderStatus(); renderTree(); }
+      if(t.dataset.panel === "text") drawIcon($("mIcon"), 512, true);
+      if(t.dataset.panel === "sim") renderSim2();
+    });
+  });
+
+  /* ---------- canvas helpers ---------- */
+  function roundRect(ctx,x,y,w,h,r){
+    r = Math.min(r, Math.abs(w)/2, Math.abs(h)/2);
+    ctx.beginPath(); ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+  }
+  function wrapLines(ctx,text,maxWidth){
+    var words = String(text||"").split(/\s+/).filter(Boolean), lines = [], line = "";
+    for(var i=0;i<words.length;i++){
+      var test = line ? line+" "+words[i] : words[i];
+      if(ctx.measureText(test).width > maxWidth && line){ lines.push(line); line = words[i]; }
+      else line = test;
+    }
+    if(line) lines.push(line);
+    return lines;
+  }
+  function drawCover(ctx,img,x,y,w,h){
+    var ir = img.width/img.height, tr = w/h, sw,sh,sx,sy;
+    if(ir > tr){ sh = img.height; sw = sh*tr; sx = (img.width-sw)/2; sy = 0; }
+    else { sw = img.width; sh = sw/tr; sx = 0; sy = (img.height-sh)/2; }
+    ctx.drawImage(img,sx,sy,sw,sh,x,y,w,h);
+  }
+  function drawContain(ctx,img,cx,cy,box){
+    var ir = img.width/img.height, w,h;
+    if(ir >= 1){ w = box; h = box/ir; } else { h = box; w = box*ir; }
+    ctx.drawImage(img, cx-w/2, cy-h/2, w, h);
+  }
+  function fileToImage(file){
+    return new Promise(function(res,rej){
+      var img = new Image();
+      img.onload = function(){ res(img); };
+      img.onerror = function(){ rej(new Error("unlesbar")); };
+      img.src = URL.createObjectURL(file);
+    });
+  }
+  function toBlob(canvas,type,quality){
+    return new Promise(function(res){ canvas.toBlob(res, type||"image/png", quality||0.93); });
+  }
+  function saveBlob(blob,name){
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 5000);
+  }
+  function download(canvas,name,fmt){
+    toBlob(canvas, fmt === "png" ? "image/png" : "image/jpeg").then(function(b){ saveBlob(b,name); });
+  }
+  function buildSwatches(host,onPick){
+    PALETTES.forEach(function(p){
+      var b = document.createElement("button");
+      b.className = "sw"; b.type = "button";
+      b.style.background = "linear-gradient(135deg,"+p[0]+","+p[1]+")";
+      b.setAttribute("aria-label","Palette "+p[0]+" nach "+p[1]);
+      b.addEventListener("click", function(){ onPick(p[0],p[1]); });
+      host.appendChild(b);
+    });
+  }
+  function offscreen(w,h){
+    var c = document.createElement("canvas"); c.width = w; c.height = h; return c;
+  }
+  function shotName(i){ return "screenshot-"+String(i+1).padStart(2,"0")+".jpg"; }
+
+  /* ---------- colour analysis ---------- */
+  function hex(r,g,b){
+    return "#"+[r,g,b].map(function(v){
+      return Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,"0");
+    }).join("").toUpperCase();
+  }
+  function parseHex(h){
+    var m = /^#?([0-9a-f]{6})$/i.exec(h||"");
+    if(!m) return [0,0,0];
+    var n = parseInt(m[1],16);
+    return [(n>>16)&255,(n>>8)&255,n&255];
+  }
+  function lum(rgb){
+    var c = rgb.map(function(v){
+      v /= 255;
+      return v <= 0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4);
+    });
+    return 0.2126*c[0] + 0.7152*c[1] + 0.0722*c[2];
+  }
+  function contrastRatio(a,b){
+    var l1 = lum(parseHex(a)), l2 = lum(parseHex(b));
+    var hi = Math.max(l1,l2), lo = Math.min(l1,l2);
+    return (hi+0.05)/(lo+0.05);
+  }
+  function mix(h1,h2,t){
+    var a = parseHex(h1), b = parseHex(h2);
+    return hex(a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t);
+  }
+  // Median-cut is overkill here: bucket into 4-bit bins, average each bin, drop
+  // near-white/near-black, then keep bins that are far enough apart in RGB space.
+  function extractPalette(img, want){
+    var s = 72, c = offscreen(s,s), ctx = c.getContext("2d"), data;
+    ctx.drawImage(img,0,0,s,s);
+    try { data = ctx.getImageData(0,0,s,s).data; }
+    catch(e){ return []; }
+    var bins = {};
+    for(var i=0;i<data.length;i+=4){
+      if(data[i+3] < 130) continue;
+      var r = data[i], g = data[i+1], b = data[i+2];
+      var mx = Math.max(r,g,b), mn = Math.min(r,g,b);
+      if(mn > 242) continue;          // white paper
+      if(mx < 16) continue;           // pure black
+      var k = (r>>4)+"|"+(g>>4)+"|"+(b>>4);
+      var e = bins[k] || (bins[k] = {n:0,r:0,g:0,b:0});
+      e.n++; e.r += r; e.g += g; e.b += b;
+    }
+    var list = Object.keys(bins).map(function(k){
+      var e = bins[k];
+      return { n:e.n, r:e.r/e.n, g:e.g/e.n, b:e.b/e.n };
+    }).sort(function(a,b){ return b.n - a.n; });
+    var out = [];
+    list.forEach(function(e){
+      if(out.length >= want) return;
+      var far = out.every(function(o){
+        return Math.abs(o.r-e.r)+Math.abs(o.g-e.g)+Math.abs(o.b-e.b) > 96;
+      });
+      if(far) out.push(e);
+    });
+    return out.map(function(e){ return hex(e.r,e.g,e.b); });
+  }
+  function brandPalette(){
+    return iconLogo ? extractPalette(iconLogo, 5) : [];
+  }
+  function renderPalettes(){
+    var cols = brandPalette();
+    [["brandpalette", function(h){
+        $("bg1").value = mix(h,"#000000",0.62); $("bg2").value = h;
+        autoTextColor(); repaint(); syncContrast();
+      }],
+     ["ipalette", function(h){
+        $("ibg1").value = mix(h,"#000000",0.42); $("ibg2").value = h;
+        drawIcons(); drawFeature();
+      }]
+    ].forEach(function(pair){
+      var host = $(pair[0]); if(!host) return;
+      host.innerHTML = "";
+      if(!cols.length){
+        host.innerHTML = '<p style="margin:2px 0 0;font-size:12.5px;color:var(--ink-soft)">Lade im Icon-Tab ein Logo, dann erscheinen hier seine Farben.</p>';
+        return;
+      }
+      cols.forEach(function(h){
+        var b = document.createElement("button");
+        b.className = "chip"; b.type = "button";
+        b.setAttribute("aria-label","Farbe "+h+" übernehmen");
+        b.innerHTML = '<span class="fill" style="background:'+h+'"></span><span class="hex">'+h.replace("#","")+'</span>';
+        b.addEventListener("click", function(){ pair[1](h); renderPalettes(); });
+        host.appendChild(b);
+      });
+    });
+  }
+  function autoTextColor(){
+    var bg = mix($("bg1").value, $("bg2").value, 0.5);
+    $("textcolor").value = contrastRatio("#FFFFFF",bg) >= contrastRatio("#131A24",bg) ? "#FFFFFF" : "#131A24";
+  }
+  function syncContrast(){
+    var el = $("contrast"); if(!el) return;
+    var bg = mix($("bg1").value, $("bg2").value, 0.5);
+    var r = contrastRatio($("textcolor").value, bg);
+    var ok = r >= 4.5;
+    el.className = "badge " + (ok ? "good" : "warn");
+    el.innerHTML = "<b>"+r.toFixed(1)+":1</b> Caption auf Hintergrund" +
+      (ok ? "" : ' <button type="button" id="fixcontrast">Beste Farbe wählen</button>');
+    var fix = $("fixcontrast");
+    if(fix) fix.addEventListener("click", function(){ autoTextColor(); repaint(); syncContrast(); });
+  }
+
+  /* ---------- status bar ---------- */
+  // Replaces the captured status bar with a clean one: full battery, full signal,
+  // a settled time. A 14 % battery in a store screenshot reads as neglect.
+  function drawStatusBar(ctx,x,y,w,h,dark){
+    var col = dark ? "rgba(16,20,26,.92)" : "rgba(255,255,255,.96)";
+    ctx.save();
+    ctx.fillStyle = col;
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "left";
+    var fs = h*0.42, midY = y+h*0.55;
+    ctx.font = "500 "+fs+"px 'DM Sans',sans-serif";
+    ctx.fillText("9:41", x+w*0.055, midY);
+    // signal bars
+    var bx = x+w*0.79, bw = w*0.011, gap = w*0.007, base = midY+fs*0.42;
+    for(var i=0;i<4;i++){
+      var bh = fs*(0.3+i*0.19);
+      ctx.fillRect(bx+i*(bw+gap), base-bh, bw, bh);
+    }
+    // wifi
+    var wx = x+w*0.875, wy = midY+fs*0.30;
+    for(var k=0;k<3;k++){
+      ctx.beginPath();
+      ctx.arc(wx, wy, fs*(0.20+k*0.16), Math.PI*1.25, Math.PI*1.75);
+      ctx.lineWidth = fs*0.10; ctx.strokeStyle = col; ctx.stroke();
+    }
+    ctx.beginPath(); ctx.arc(wx, wy, fs*0.06, 0, Math.PI*2); ctx.fill();
+    // battery
+    var ex = x+w*0.915, ew = w*0.048, eh = fs*0.52;
+    ctx.globalAlpha = .45;
+    ctx.lineWidth = Math.max(1, fs*0.07); ctx.strokeStyle = col;
+    roundRect(ctx, ex, midY-eh/2, ew, eh, eh*0.28); ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillRect(ex+ew*0.09, midY-eh*0.30, ew*0.82, eh*0.60);
+    ctx.fillRect(ex+ew+fs*0.03, midY-eh*0.14, fs*0.07, eh*0.28);
+    ctx.restore();
+  }
+  function topLuminance(img,cropTop){
+    var c = offscreen(24,6), ctx = c.getContext("2d");
+    var srcY = img.height*cropTop;
+    try {
+      ctx.drawImage(img, 0, srcY, img.width, img.height*0.04, 0, 0, 24, 6);
+      var d = ctx.getImageData(0,0,24,6).data, sum = 0, n = 0;
+      for(var i=0;i<d.length;i+=4){ sum += (d[i]*0.299+d[i+1]*0.587+d[i+2]*0.114); n++; }
+      return sum/n/255;
+    } catch(e){ return 0.5; }
+  }
+  // cover-fit, but skipping the top slice of the source image
+  function drawScreen(ctx,img,x,y,w,h,cropTop){
+    var srcY = img.height*cropTop, srcH = img.height - srcY;
+    var ir = img.width/srcH, tr = w/h, sw, sh, sx, sy;
+    if(ir > tr){ sh = srcH; sw = sh*tr; sx = (img.width-sw)/2; sy = srcY; }
+    else { sw = img.width; sh = sw/tr; sx = 0; sy = srcY; }
+    ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+  }
+
+  /* ---------- device ---------- */
+  function drawDevice(ctx,img,cx,cy,w,rot,style,framed){
+    var h = w*RATIO;
+    ctx.save(); ctx.translate(cx,cy); if(rot) ctx.rotate(rot);
+    var x = -w/2, y = -h/2;
+    var bezel = framed ? Math.max(5,w*0.023) : 0;
+    var outerR = w*0.088, innerR = framed ? Math.max(3,outerR-bezel*0.7) : outerR*0.75;
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,.45)"; ctx.shadowBlur = w*0.09; ctx.shadowOffsetY = w*0.035;
+    ctx.fillStyle = framed ? (style === "dark" ? "#0C0F13" : "#E9EBEE") : "#FFFFFF";
+    roundRect(ctx,x,y,w,h,framed?outerR:innerR); ctx.fill();
+    ctx.restore();
+    var sx = x+bezel, sy = y+bezel, sw = w-bezel*2, sh = h-bezel*2;
+    ctx.save();
+    roundRect(ctx,sx,sy,sw,sh,innerR); ctx.clip();
+    ctx.fillStyle = "#FFF"; ctx.fillRect(sx,sy,sw,sh);
+    var mode = $("statusbar") ? $("statusbar").value : "off";
+    var crop = $("croptop") ? parseInt($("croptop").value,10)/100 : 0;
+    if(mode !== "off") crop = Math.max(crop, 0.035);
+    if(img) drawScreen(ctx,img,sx,sy,sw,sh,crop);
+    if(img && mode !== "off"){
+      var dark = mode === "dark" || (mode === "auto" && topLuminance(img,crop) > 0.55);
+      drawStatusBar(ctx, sx, sy, sw, sh*0.038, dark);
+    }
+    var sheen = ctx.createLinearGradient(sx,sy,sx+sw*0.7,sy+sh*0.45);
+    sheen.addColorStop(0,"rgba(255,255,255,.11)"); sheen.addColorStop(1,"rgba(255,255,255,0)");
+    ctx.fillStyle = sheen; ctx.fillRect(sx,sy,sw,sh);
+    ctx.restore();
+    if(framed){
+      ctx.strokeStyle = style === "dark" ? "rgba(255,255,255,.18)" : "rgba(0,0,0,.16)";
+      ctx.lineWidth = Math.max(1,w*0.0022);
+      roundRect(ctx,x,y,w,h,outerR); ctx.stroke();
+      ctx.fillStyle = "rgba(0,0,0,.82)";
+      ctx.beginPath(); ctx.arc(0,y+bezel+w*0.042,w*0.016,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = style === "dark" ? "#23282F" : "#C9CDD3";
+      roundRect(ctx,x+w,y+h*0.20,w*0.008,h*0.075,w*0.004); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /* ---------- screenshots ---------- */
+  function currentSize(){ var p = $("preset").value.split("x"); return {w:parseInt(p[0],10),h:parseInt(p[1],10)}; }
+  function cfg(){
+    return { layout:$("layout").value, pano:$("pano").checked, bg1:$("bg1").value, bg2:$("bg2").value,
+      text:$("textcolor").value, frameStyle:$("frame").value,
+      scale:parseInt($("scale").value,10)/100, head:parseInt($("headsize").value,10) };
+  }
+
+  function drawShot(canvas,i){
+    var shot = shots[i]; if(!shot) return;
+    var c = cfg(), size = currentSize(), W = size.w, H = size.h, u = W/1080, n = shots.length;
+    canvas.width = W; canvas.height = H;
+    var ctx = canvas.getContext("2d");
+
+    ctx.save();
+    if(c.pano && n > 1){
+      var TW = W*n;
+      ctx.translate(-i*W,0);
+      var g = ctx.createLinearGradient(0,0,TW,H);
+      g.addColorStop(0,c.bg1); g.addColorStop(1,c.bg2);
+      ctx.fillStyle = g; ctx.fillRect(0,0,TW,H);
+      var blob = ctx.createRadialGradient(TW*0.5,H*0.28,10,TW*0.5,H*0.28,TW*0.42);
+      blob.addColorStop(0,"rgba(255,255,255,.14)"); blob.addColorStop(1,"rgba(255,255,255,0)");
+      ctx.fillStyle = blob; ctx.fillRect(0,0,TW,H);
+    } else {
+      var g2 = ctx.createLinearGradient(0,0,W*0.4,H);
+      g2.addColorStop(0,c.bg1); g2.addColorStop(1,c.bg2);
+      ctx.fillStyle = g2; ctx.fillRect(0,0,W,H);
+    }
+    ctx.restore();
+
+    var headPx = c.head*u, subPx = headPx*0.44, margin = 92*u;
+    var layout = (c.pano && n>1) ? "caption-top" : c.layout;
+    var alignLeft = layout === "angled";
+    var capTop = 118*u, capH = 0;
+
+    function paintCaption(baseY){
+      ctx.fillStyle = c.text; ctx.textAlign = alignLeft?"left":"center"; ctx.textBaseline = "top";
+      var maxW = W - margin*2, xPos = alignLeft ? margin : W/2, y = baseY;
+      ctx.font = "700 "+headPx+"px 'Bricolage Grotesque','DM Sans',sans-serif";
+      var lines = wrapLines(ctx, shot.headline, maxW), lh = headPx*1.16;
+      lines.forEach(function(l,k){ ctx.fillText(l,xPos,y+k*lh); });
+      y += lines.length*lh;
+      if(shot.sub){
+        ctx.globalAlpha = .78;
+        ctx.font = "400 "+subPx+"px 'DM Sans',sans-serif";
+        y += lines.length ? subPx*0.42 : 0;
+        wrapLines(ctx,shot.sub,maxW*0.92).forEach(function(l,k){ ctx.fillText(l,xPos,y+k*subPx*1.3); });
+        y += wrapLines(ctx,shot.sub,maxW*0.92).length*subPx*1.3;
+        ctx.globalAlpha = 1;
+      }
+      return y - baseY;
+    }
+
+    var hasCaption = !!(shot.headline || shot.sub);
+    if(hasCaption && layout !== "caption-bottom") capH = paintCaption(capTop);
+    var top = capTop + capH + (hasCaption ? 78*u : 0);
+    var devW, cx, cy, framed = layout !== "bare";
+
+    if(c.pano && n > 1){
+      devW = W*Math.min(c.scale,0.82); cx = W*0.60; cy = top + devW*RATIO*0.46;
+      [-1,0,1].forEach(function(d){
+        var j = i+d; if(j<0||j>=n) return;
+        drawDevice(ctx, shots[j].img, cx+d*W, cy, devW, 0, c.frameStyle, framed);
+      });
+    } else if(layout === "bleed"){
+      devW = W*Math.max(c.scale,0.7); cx = W/2; cy = top + devW*RATIO*0.46;
+      drawDevice(ctx,shot.img,cx,cy,devW,0,c.frameStyle,framed);
+    } else if(layout === "angled"){
+      devW = W*Math.max(c.scale,0.66); cx = W*0.56; cy = top + devW*RATIO*0.44;
+      drawDevice(ctx,shot.img,cx,cy,devW,-7*Math.PI/180,c.frameStyle,framed);
+    } else if(layout === "caption-bottom"){
+      devW = W*c.scale;
+      var availH = H - capTop - 300*u;
+      if(devW*RATIO > availH) devW = availH/RATIO;
+      cx = W/2; cy = capTop + devW*RATIO/2;
+      drawDevice(ctx,shot.img,cx,cy,devW,0,c.frameStyle,framed);
+      paintCaption(cy + devW*RATIO/2 + 70*u);
+    } else {
+      devW = W*c.scale;
+      var avail = H - top - 70*u;
+      if(devW*RATIO > avail) devW = avail/RATIO;
+      cx = W/2; cy = top + devW*RATIO/2;
+      drawDevice(ctx,shot.img,cx,cy,devW,0,c.frameStyle,framed);
+    }
+  }
+
+  function renderList(){
+    var list = $("shotlist"); list.innerHTML = "";
+    shots.forEach(function(shot,i){
+      var li = document.createElement("li"); li.className = "shotrow";
+      var thumb = document.createElement("img"); thumb.src = shot.img.src; thumb.alt = "";
+      var grow = document.createElement("div"); grow.className = "grow";
+      var idx = document.createElement("span"); idx.className = "idx";
+      idx.innerHTML = String(i+1).padStart(2,"0") + (i<3 ? " <b>· in der Suche sichtbar</b>" : "");
+      var input = document.createElement("input");
+      input.type = "text"; input.value = shot.headline;
+      input.placeholder = "Caption — der Nutzen, nicht der Screenname";
+      input.setAttribute("aria-label","Caption für Screenshot "+(i+1));
+      input.addEventListener("input", function(){ shot.headline = input.value; repaint(); });
+      var sub = document.createElement("input");
+      sub.type = "text"; sub.className = "sub"; sub.value = shot.sub;
+      sub.placeholder = "Zweite Zeile (optional)";
+      sub.setAttribute("aria-label","Unterzeile für Screenshot "+(i+1));
+      sub.addEventListener("input", function(){ shot.sub = sub.value; repaint(); });
+      grow.appendChild(idx); grow.appendChild(input); grow.appendChild(sub);
+      var tools = document.createElement("div"); tools.className = "rowtools";
+      function mk(label,title,fn,cls){
+        var b = document.createElement("button");
+        b.className = "iconbtn"+(cls?" "+cls:""); b.type = "button";
+        b.textContent = label; b.title = title;
+        b.setAttribute("aria-label",title+" — Screenshot "+(i+1));
+        b.addEventListener("click",fn); return b;
+      }
+      if(i>0) tools.appendChild(mk("↑","Nach vorn",function(){ move(i,-1); }));
+      if(i<shots.length-1) tools.appendChild(mk("↓","Nach hinten",function(){ move(i,1); }));
+      tools.appendChild(mk("×","Entfernen",function(){ shots.splice(i,1); renderList(); renderPlates(); },"del"));
+      li.appendChild(thumb); li.appendChild(grow); li.appendChild(tools);
+      list.appendChild(li);
+    });
+  }
+  function move(i,d){ var t = shots[i]; shots[i] = shots[i+d]; shots[i+d] = t; renderList(); renderPlates(); }
+
+  function renderPlates(){
+    var sheet = $("sheet"); sheet.innerHTML = "";
+    sheet.className = "sheet" + (($("pano").checked && shots.length>1) ? " pano" : "");
+    $("stagelabel").textContent = shots.length
+      ? "Vorschau · "+shots.length+" von 8"+(shots.length<2 ? " · mindestens 2 nötig" : (shots.length<4 ? " · ab 4 Featuring-fähig" : ""))
+      : "Vorschau";
+    if(!shots.length){
+      var p = document.createElement("p"); p.className = "empty";
+      p.textContent = "Noch keine Screenshots geladen. Links Dateien auswählen, dann erscheint hier die Vorschau in Store-Auflösung.";
+      sheet.appendChild(p); $("searchsim").hidden = true; updateReadout(); return;
+    }
+    var size = currentSize();
+    shots.forEach(function(shot,i){
+      var plate = document.createElement("div");
+      plate.className = "plate shotplate" + ($("guides").checked ? " showguides" : "");
+      var ruler = document.createElement("div"); ruler.className = "ruler";
+      var dim = document.createElement("span"); dim.className = "dim";
+      dim.textContent = (i===0 || !$("pano").checked) ? size.w+" × "+size.h : "↔";
+      var inner = document.createElement("div"); inner.className = "frameinner";
+      var canvas = document.createElement("canvas"); shot.canvas = canvas;
+      var guides = document.createElement("div"); guides.className = "guides";
+      inner.appendChild(canvas); inner.appendChild(guides);
+      var cap = document.createElement("div"); cap.className = "cap";
+      var name = document.createElement("span"); name.textContent = shotName(i);
+      var btn = document.createElement("button"); btn.type = "button"; btn.textContent = "Laden";
+      btn.addEventListener("click", function(){ download(canvas, shotName(i), "jpeg"); });
+      cap.appendChild(name); cap.appendChild(btn);
+      plate.appendChild(ruler); plate.appendChild(dim); plate.appendChild(inner); plate.appendChild(cap);
+      sheet.appendChild(plate);
+      drawShot(canvas,i);
+    });
+    renderSim(); updateReadout();
+  }
+  function repaint(){
+    shots.forEach(function(s,i){ if(s.canvas) drawShot(s.canvas,i); });
+    renderSim();
+    if(!$("panel-sim").hidden) renderSim2();
+  }
+  function renderSim(){
+    var host = $("simshots"); host.innerHTML = "";
+    $("searchsim").hidden = !shots.length;
+    shots.slice(0,3).forEach(function(shot){
+      if(!shot.canvas) return;
+      var c = offscreen(108, Math.round(108*shot.canvas.height/shot.canvas.width));
+      c.getContext("2d").drawImage(shot.canvas,0,0,c.width,c.height);
+      c.style.width = "54px";
+      host.appendChild(c);
+    });
+  }
+
+  function addFiles(fileList){
+    var files = Array.prototype.slice.call(fileList).filter(function(f){ return /^image\//.test(f.type); });
+    if(!files.length) return;
+    if(shots.length + files.length > 8){
+      alert("Der Play Store nimmt höchstens 8 Screenshots pro Gerätetyp. Es werden nur die ersten "+(8-shots.length)+" übernommen.");
+      files = files.slice(0, 8-shots.length);
+    }
+    Promise.all(files.map(fileToImage)).then(function(imgs){
+      imgs.forEach(function(img){ shots.push({id:nextId++,img:img,headline:"",sub:"",canvas:null}); });
+      renderList(); renderPlates();
+    }).catch(function(){ alert("Mindestens eine Datei ließ sich nicht als Bild lesen. Nimm PNG oder JPG."); });
+  }
+  (function wireDrop(){
+    var drop = $("drop"), input = $("file");
+    drop.addEventListener("click", function(){ input.click(); });
+    drop.addEventListener("keydown", function(e){ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); input.click(); } });
+    input.addEventListener("change", function(){ addFiles(input.files); input.value = ""; });
+    ["dragenter","dragover"].forEach(function(ev){ drop.addEventListener(ev,function(e){ e.preventDefault(); drop.classList.add("hot"); }); });
+    ["dragleave","drop"].forEach(function(ev){ drop.addEventListener(ev,function(e){ e.preventDefault(); drop.classList.remove("hot"); }); });
+    drop.addEventListener("drop", function(e){ if(e.dataTransfer&&e.dataTransfer.files) addFiles(e.dataTransfer.files); });
+  })();
+
+  ["preset","layout","pano","guides"].forEach(function(id){ $(id).addEventListener("change", renderPlates); });
+  ["bg1","bg2","textcolor","frame"].forEach(function(id){
+    $(id).addEventListener("input", repaint); $(id).addEventListener("change", repaint);
+  });
+  $("scale").addEventListener("input", function(){ $("scaleval").textContent = $("scale").value+" %"; repaint(); });
+  $("headsize").addEventListener("input", function(){ $("headval").textContent = $("headsize").value+" px"; repaint(); });
+  buildSwatches($("swatches"), function(a,b){
+    $("bg1").value = a; $("bg2").value = b;
+    $("textcolor").value = (a === "#F5F1EA") ? "#131A24" : "#FFFFFF";
+    repaint();
+  });
+  $("dlall").addEventListener("click", function(){
+    if(!shots.length){ alert("Lade zuerst mindestens einen Screenshot."); return; }
+    shots.forEach(function(shot,i){ setTimeout(function(){ download(shot.canvas, shotName(i), "jpeg"); }, i*450); });
+  });
+
+  /* ---------- feature graphic ---------- */
+  function featureLogo(){
+    return ($("fusericon").checked && iconLogo) ? iconLogo : featLogo;
+  }
+  function drawFeature(){
+    var canvas = $("fcanvas"), ctx = canvas.getContext("2d"), W = 1024, H = 500;
+    canvas.width = W; canvas.height = H;
+    var g = ctx.createLinearGradient(0,0,W,H);
+    g.addColorStop(0,$("fbg1").value); g.addColorStop(1,$("fbg2").value);
+    ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+
+    var color = $("ftextcolor").value, align = $("falign").value, safe = 62;
+    var title = $("ftitle").value.trim(), sub = $("fsub").value.trim();
+    var logo = featureLogo(), logoSize = 124;
+    var showDev = $("fdevice").checked && shots.length, textRight = W - safe;
+
+    if(showDev){
+      var blob = ctx.createRadialGradient(W*0.80,H*0.5,10,W*0.80,H*0.5,H*0.75);
+      blob.addColorStop(0,"rgba(255,255,255,.13)"); blob.addColorStop(1,"rgba(255,255,255,0)");
+      ctx.fillStyle = blob; ctx.fillRect(0,0,W,H);
+      drawDevice(ctx, shots[0].img, W*0.80, H*0.60, 190, -9*Math.PI/180, $("frame").value, true);
+      textRight = W*0.63;
+    }
+    ctx.textBaseline = "top"; ctx.fillStyle = color;
+
+    if(align === "center" && !showDev){
+      var maxW = W - safe*2, startY;
+      ctx.textAlign = "center";
+      if(logo){ drawContain(ctx, logo, W/2, H/2-88, logoSize); startY = H/2+12; }
+      else startY = H/2-48;
+      ctx.font = "800 60px 'Bricolage Grotesque','DM Sans',sans-serif";
+      var tl = wrapLines(ctx,title,maxW).slice(0,2);
+      tl.forEach(function(l,i){ ctx.fillText(l,W/2,startY+i*68); });
+      ctx.globalAlpha = .82; ctx.font = "400 26px 'DM Sans',sans-serif";
+      wrapLines(ctx,sub,maxW).slice(0,2).forEach(function(l,i){ ctx.fillText(l,W/2,startY+tl.length*68+14+i*35); });
+      ctx.globalAlpha = 1;
+    } else {
+      var x = safe;
+      ctx.textAlign = "left";
+      if(logo){ drawContain(ctx, logo, x+logoSize/2, H/2-16, logoSize); x += logoSize+38; }
+      var mw = textRight - x;
+      ctx.font = "800 58px 'Bricolage Grotesque','DM Sans',sans-serif";
+      var t2 = wrapLines(ctx,title,mw).slice(0,2);
+      ctx.font = "400 26px 'DM Sans',sans-serif";
+      var s2 = wrapLines(ctx,sub,mw).slice(0,2);
+      var blockH = t2.length*66 + (s2.length ? 14+s2.length*35 : 0), y = (H-blockH)/2;
+      ctx.font = "800 58px 'Bricolage Grotesque','DM Sans',sans-serif";
+      t2.forEach(function(l,i){ ctx.fillText(l,x,y+i*66); });
+      ctx.globalAlpha = .82; ctx.font = "400 26px 'DM Sans',sans-serif";
+      s2.forEach(function(l,i){ ctx.fillText(l,x,y+t2.length*66+14+i*35); });
+      ctx.globalAlpha = 1;
+    }
+    updateReadout();
+  }
+  ["ftitle","fsub","fbg1","fbg2","ftextcolor","falign","fdevice","fusericon"].forEach(function(id){
+    $(id).addEventListener("input", drawFeature); $(id).addEventListener("change", drawFeature);
+  });
+  buildSwatches($("fswatches"), function(a,b){
+    $("fbg1").value = a; $("fbg2").value = b;
+    $("ftextcolor").value = (a === "#F5F1EA") ? "#131A24" : "#FFFFFF";
+    drawFeature();
+  });
+  $("fdl").addEventListener("click", function(){ download($("fcanvas"),"feature-graphic.jpg","jpeg"); });
+  $("fdl2").addEventListener("click", function(){ download($("fcanvas"),"feature-graphic.jpg","jpeg"); });
+
+  /* ---------- icon ---------- */
+  function iconBg(ctx,size){
+    var g = ctx.createLinearGradient(0,0,size,size);
+    g.addColorStop(0,$("ibg1").value); g.addColorStop(1,$("ibg2").value);
+    ctx.fillStyle = g; ctx.fillRect(0,0,size,size);
+  }
+  // Store icon: full square, no rounding, opaque.
+  function drawIcon(canvas,size,withBg){
+    canvas.width = size; canvas.height = size;
+    var ctx = canvas.getContext("2d");
+    ctx.clearRect(0,0,size,size);
+    if(withBg) iconBg(ctx,size);
+    if(iconLogo) drawContain(ctx, iconLogo, size/2, size/2, size*0.66*(parseInt($("izoom").value,10)/100)*1.15);
+  }
+  // Adaptive foreground: transparent, artwork inside the centre safe circle.
+  function drawFg(canvas,size){
+    canvas.width = size; canvas.height = size;
+    var ctx = canvas.getContext("2d");
+    ctx.clearRect(0,0,size,size);
+    if(iconLogo) drawContain(ctx, iconLogo, size/2, size/2, size*0.61*(parseInt($("izoom").value,10)/100));
+  }
+  function drawBgLayer(canvas,size){
+    canvas.width = size; canvas.height = size;
+    iconBg(canvas.getContext("2d"), size);
+  }
+  function drawMono(canvas,size){
+    canvas.width = size; canvas.height = size;
+    var ctx = canvas.getContext("2d");
+    ctx.clearRect(0,0,size,size);
+    if(!iconLogo) return;
+    drawContain(ctx, iconLogo, size/2, size/2, size*0.61*(parseInt($("izoom").value,10)/100));
+    ctx.globalCompositeOperation = "source-in";
+    ctx.fillStyle = $("imono").value;
+    ctx.fillRect(0,0,size,size);
+    ctx.globalCompositeOperation = "source-over";
+  }
+  function drawComposed(canvas,size,mask){
+    canvas.width = size; canvas.height = size;
+    var ctx = canvas.getContext("2d");
+    ctx.clearRect(0,0,size,size);
+    ctx.save();
+    if(mask === "circle"){ ctx.beginPath(); ctx.arc(size/2,size/2,size*0.36,0,Math.PI*2); ctx.clip(); }
+    else if(mask === "squircle"){ roundRect(ctx,size*0.14,size*0.14,size*0.72,size*0.72,size*0.23); ctx.clip(); }
+    else if(mask === "round"){ roundRect(ctx,size*0.14,size*0.14,size*0.72,size*0.72,size*0.12); ctx.clip(); }
+    iconBg(ctx,size);
+    if(iconLogo) drawContain(ctx, iconLogo, size/2, size/2, size*0.61*(parseInt($("izoom").value,10)/100));
+    ctx.restore();
+  }
+  function drawIcons(){
+    drawIcon($("icStore"),512,true);
+    drawFg($("icFg"),432);
+    drawComposed($("icCircle"),432,"circle");
+    drawComposed($("icSquircle"),432,"squircle");
+    drawComposed($("icRound"),432,"round");
+    drawComposed($("icSmall"),48,"squircle");
+    drawMono($("icMono"),432);
+    drawIcon($("mIcon"),512,true);
+    updateReadout();
+  }
+  ["ibg1","ibg2","imono"].forEach(function(id){
+    $(id).addEventListener("input", function(){ drawIcons(); drawFeature(); });
+  });
+  $("izoom").addEventListener("input", function(){
+    $("izoomval").textContent = $("izoom").value+" %"; drawIcons();
+  });
+  buildSwatches($("iswatches"), function(a,b){ $("ibg1").value = a; $("ibg2").value = b; drawIcons(); });
+  (function wireLogo(){
+    var drop = $("ilogodrop"), input = $("ilogo");
+    drop.addEventListener("click", function(){ input.click(); });
+    drop.addEventListener("keydown", function(e){ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); input.click(); } });
+    input.addEventListener("change", function(){
+      if(!input.files.length) return;
+      fileToImage(input.files[0]).then(function(img){
+        iconLogo = img; drop.querySelector("strong").textContent = "Logo geladen — anderes wählen";
+        drawIcons(); drawFeature(); renderPalettes();
+      }).catch(function(){ alert("Logo ließ sich nicht lesen. Nimm PNG, JPG oder SVG."); });
+      input.value = "";
+    });
+    ["dragenter","dragover"].forEach(function(ev){ drop.addEventListener(ev,function(e){ e.preventDefault(); drop.classList.add("hot"); }); });
+    ["dragleave","drop"].forEach(function(ev){ drop.addEventListener(ev,function(e){ e.preventDefault(); drop.classList.remove("hot"); }); });
+    drop.addEventListener("drop", function(e){
+      if(!e.dataTransfer || !e.dataTransfer.files.length) return;
+      fileToImage(e.dataTransfer.files[0]).then(function(img){
+        iconLogo = img; drawIcons(); drawFeature(); renderPalettes();
+      });
+    });
+  })();
+  $("idlstore").addEventListener("click", function(){
+    if(!iconLogo){ alert("Lade zuerst ein Logo."); return; }
+    download($("icStore"),"icon.png","png");
+  });
+
+  var LAUNCHER_XML =
+    '<?xml version="1.0" encoding="utf-8"?>\n' +
+    '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n' +
+    '    <background android:drawable="@mipmap/ic_launcher_background"/>\n' +
+    '    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>\n' +
+    '    <monochrome android:drawable="@mipmap/ic_launcher_monochrome"/>\n' +
+    '</adaptive-icon>\n';
+
+  function addLauncherFiles(zip){
+    if(!iconLogo) return Promise.resolve();
+    var jobs = [];
+    DENS.forEach(function(d){
+      var name = d[0], f = d[1];
+      var adaptive = Math.round(108*f), legacy = Math.round(48*f);
+      var dir = "android/app/src/main/res/mipmap-"+name+"/";
+      var fg = offscreen(1,1), bg = offscreen(1,1), mono = offscreen(1,1), legacyC = offscreen(1,1);
+      drawFg(fg,adaptive); drawBgLayer(bg,adaptive); drawMono(mono,adaptive);
+      drawComposed(legacyC,legacy,"squircle");
+      jobs.push(toBlob(fg,"image/png").then(function(b){ zip.file(dir+"ic_launcher_foreground.png", b); }));
+      jobs.push(toBlob(bg,"image/png").then(function(b){ zip.file(dir+"ic_launcher_background.png", b); }));
+      jobs.push(toBlob(mono,"image/png").then(function(b){ zip.file(dir+"ic_launcher_monochrome.png", b); }));
+      jobs.push(toBlob(legacyC,"image/png").then(function(b){ zip.file(dir+"ic_launcher.png", b); }));
+    });
+    zip.file("android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml", LAUNCHER_XML);
+    return Promise.all(jobs);
+  }
+
+  $("idlall").addEventListener("click", function(){
+    if(!iconLogo){ alert("Lade zuerst ein Logo."); return; }
+    if(typeof JSZip === "undefined"){ alert("Die ZIP-Bibliothek konnte nicht geladen werden. Prüfe die Verbindung oder lade die Assets einzeln."); return; }
+    var zip = new JSZip();
+    addLauncherFiles(zip).then(function(){
+      var store = offscreen(1,1); drawIcon(store,512,true);
+      return toBlob(store,"image/png").then(function(b){
+        zip.file("play/icon.png", b);
+        return zip.generateAsync({type:"blob"});
+      });
+    }).then(function(blob){ saveBlob(blob,"launcher-icons.zip"); });
+  });
+
+  /* ---------- texte ---------- */
+  var LIMITS = { mTitle:30, mShort:80, mFull:4000, mWhats:500 };
+  function countField(id){
+    var el = $(id), n = el.value.length, max = LIMITS[id];
+    var c = $("c"+id.slice(1));
+    c.textContent = n+" / "+max;
+    c.classList.toggle("over", n > max);
+    return n;
+  }
+  function syncText(){
+    Object.keys(LIMITS).forEach(countField);
+    $("pvTitle").textContent = $("mTitle").value || "App-Name";
+    $("pvShort").textContent = $("mShort").value || "Kurzbeschreibung";
+    $("pvFull").textContent = $("mFull").value || "Die ersten drei Zeilen deiner Beschreibung.";
+    lintText();
+    if(!$("panel-sim").hidden) renderSim2();
+    updateReadout();
+  }
+  Object.keys(LIMITS).forEach(function(id){ $(id).addEventListener("input", syncText); });
+  $("mGerüst").addEventListener("click", function(){
+    if($("mFull").value.trim() && !confirm("Die vorhandene Beschreibung wird ersetzt. Fortfahren?")) return;
+    $("mFull").value =
+      "Was die App für dich tut, in zwei Sätzen. Diese Zeilen sind alles, was vor dem Antippen von „Mehr ansehen“ sichtbar ist.\n\n"+
+      "DAS KANN SIE\n"+
+      "• Funktion eins — der Nutzen, nicht die Technik\n"+
+      "• Funktion zwei\n"+
+      "• Funktion drei\n\n"+
+      "FÜR WEN\n"+
+      "Beschreibe die Situation, in der jemand nach so etwas sucht.\n\n"+
+      "DATEN UND BERECHTIGUNGEN\n"+
+      "Welche Daten die App braucht und warum. Deckungsgleich mit dem Data-Safety-Formular halten.\n\n"+
+      "FRAGEN\n"+
+      "kontakt@example.com";
+    syncText();
+  });
+
+  /* ---------- text linter ---------- */
+  var RULES = [
+    { re:/\b(beste[rnms]?|best|nummer\s*1|nr\.?\s*1|#1|top[- ]?app|marktführer|weltweit führend|führende[rns]?)\b/gi,
+      title:"Superlativ oder Ranking-Behauptung",
+      note:"Play untersagt Behauptungen über Platzierungen und unbelegte Bestwerte im Eintrag." },
+    { re:/\b(kostenlos|gratis|umsonst|free|rabatt|sale|jetzt sparen|\d+\s*%\s*(rabatt|off))\b/gi,
+      title:"Preis- oder Werbeaussage",
+      note:"Preise und Aktionen gehören nicht in Titel und Beschreibung — sie veralten und verstoßen gegen die Richtlinien." },
+    { re:/!{2,}/g, title:"Mehrfache Ausrufezeichen", note:"Wirkt wie Spam und bringt keinen Suchvorteil." },
+    { re:/\b[A-ZÄÖÜ]{5,}\b/g, title:"Wort in Versalien",
+      note:"Durchgehende Großschreibung im Titel wird bei der Prüfung beanstandet." },
+    { re:/(?:[\u2190-\u21FF\u2300-\u27BF\uFE0F]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|\uD83E[\uDD00-\uDFFF])\s*(?:[\u2190-\u21FF\u2300-\u27BF\uFE0F]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|\uD83E[\uDD00-\uDFFF])\s*(?:[\u2190-\u21FF\u2300-\u27BF\uFE0F]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|\uD83E[\uDD00-\uDFFF])/g,
+      title:"Emoji-Kette", note:"Drei oder mehr Emoji hintereinander gelten als dekoratives Rauschen." },
+    { re:/\b(download|downloaden|installiere?n?\s+jetzt|jetzt herunterladen)\b/gi,
+      title:"Handlungsaufforderung", note:"Der Installieren-Button steht direkt daneben — der Satz kostet nur Platz." }
+  ];
+
+  function lintText(){
+    var host = $("lintlist"); if(!host) return;
+    var title = $("mTitle").value, short = $("mShort").value, full = $("mFull").value;
+    var all = [title, short, full].join("\n");
+    var found = [];
+
+    RULES.forEach(function(rule){
+      rule.re.lastIndex = 0;
+      var hits = all.match(rule.re);
+      if(hits && hits.length){
+        var uniq = hits.filter(function(v,i,a){ return a.indexOf(v) === i; }).slice(0,4);
+        found.push({ level:"warn", title:rule.title, note:rule.note, hits:uniq });
+      }
+    });
+
+    // keyword stuffing: any content word repeated unusually often
+    var words = full.toLowerCase().match(/[a-zäöüß]{5,}/g) || [];
+    var freq = {};
+    words.forEach(function(w){ freq[w] = (freq[w]||0)+1; });
+    var stuffed = Object.keys(freq).filter(function(w){ return freq[w] >= 7; });
+    if(stuffed.length){
+      found.push({ level:"warn", title:"Mögliches Keyword-Stapeln",
+        note:"Play wertet unnatürliche Wiederholungen ab. Formuliere die Stellen um.",
+        hits: stuffed.slice(0,4).map(function(w){ return w+" ×"+freq[w]; }) });
+    }
+
+    // first paragraph gets cut after roughly three lines
+    var firstPara = full.split(/\n\s*\n/)[0] || "";
+    if(firstPara.length > 165){
+      found.push({ level:"info", title:"Erster Absatz wird abgeschnitten",
+        note:"Sichtbar sind etwa drei Zeilen. Das Versprechen sollte in die ersten rund 165 Zeichen passen." });
+    }
+    if(short && !/[.!?]$/.test(short.trim())){
+      found.push({ level:"info", title:"Kurzbeschreibung ohne Satzzeichen",
+        note:"Sie steht als eigener Satz unter dem Titel." });
+    }
+    if(title && short && title.trim() && short.toLowerCase().indexOf(title.toLowerCase().split(/[\s:–-]/)[0]) === -1){
+      found.push({ level:"info", title:"Kein gemeinsames Suchwort",
+        note:"Name und Kurzbeschreibung teilen kein Wort. Play zieht die Relevanz vor allem aus diesen beiden Feldern." });
+    }
+
+    host.innerHTML = "";
+    if(!found.length){
+      var li = document.createElement("li");
+      li.className = "info";
+      li.innerHTML = '<span class="mark">✓</span><div><span>Nichts auffällig</span><small>'+
+        (all.trim() ? "Keine der geprüften Formulierungen gefunden." : "Noch keine Texte eingegeben.")+'</small></div>';
+      host.appendChild(li);
+      return;
+    }
+    found.forEach(function(f){
+      var li = document.createElement("li");
+      li.className = f.level === "info" ? "info" : "";
+      var hits = f.hits ? " <small>Gefunden: "+f.hits.map(function(h){
+        return "<mark>"+String(h).replace(/[<>&]/g,"")+"</mark>";
+      }).join(" ")+"</small>" : "";
+      li.innerHTML = '<span class="mark">'+(f.level === "info" ? "·" : "!")+'</span>'+
+        '<div><span>'+f.title+'</span><small>'+f.note+'</small>'+hits+'</div>';
+      host.appendChild(li);
+    });
+  }
+
+  /* ---------- store page simulator ---------- */
+  function renderSim2(){
+    drawIcon($("simIcon"),512,true);
+    $("simTitle").textContent = $("mTitle").value || "App-Name";
+    $("simShort").textContent = $("mShort").value || "Kurzbeschreibung — sie steht hier, bevor jemand „Mehr ansehen“ antippt.";
+    var rail = $("simRail"); rail.innerHTML = "";
+    if(!shots.length){
+      rail.innerHTML = '<p style="font-family:\'DM Mono\',monospace;font-size:11.5px;color:var(--ink-soft);margin:0">Noch keine Screenshots.</p>';
+      return;
+    }
+    shots.forEach(function(shot){
+      if(!shot.canvas) return;
+      var w = 236, c = offscreen(w, Math.round(w*shot.canvas.height/shot.canvas.width));
+      c.getContext("2d").drawImage(shot.canvas,0,0,c.width,c.height);
+      rail.appendChild(c);
+    });
+  }
+
+  /* ---------- project file ---------- */
+  function imgToData(img,type,q){
+    var c = offscreen(img.naturalWidth||img.width, img.naturalHeight||img.height);
+    c.getContext("2d").drawImage(img,0,0,c.width,c.height);
+    return c.toDataURL(type||"image/png", q||0.85);
+  }
+  var SETTINGS = ["layout","pano","preset","bg1","bg2","textcolor","frame","scale","headsize",
+    "statusbar","croptop","ftitle","fsub","fbg1","fbg2","ftextcolor","falign",
+    "ibg1","ibg2","izoom","imono","mLocale","mPackage","mTitle","mShort","mFull","mWhats"];
+  function saveProject(){
+    var data = { version:2, saved:new Date().toISOString(), settings:{}, shots:[], logo:null };
+    SETTINGS.forEach(function(id){
+      var el = $(id); if(!el) return;
+      data.settings[id] = el.type === "checkbox" ? el.checked : el.value;
+    });
+    ["fdevice","fusericon","pano","guides"].forEach(function(id){
+      if($(id)) data.settings[id] = $(id).checked;
+    });
+    shots.forEach(function(s){
+      data.shots.push({ headline:s.headline, sub:s.sub, image:imgToData(s.img,"image/jpeg",0.85) });
+    });
+    if(iconLogo) data.logo = imgToData(iconLogo,"image/png");
+    saveBlob(new Blob([JSON.stringify(data)],{type:"application/json"}),
+      ($("mTitle").value.trim().toLowerCase().replace(/[^a-z0-9]+/g,"-") || "listing")+"-projekt.json");
+  }
+  function loadImage(src){
+    return new Promise(function(res,rej){
+      var i = new Image(); i.onload = function(){ res(i); }; i.onerror = rej; i.src = src;
+    });
+  }
+  function loadProject(file){
+    file.text().then(function(txt){
+      var data = JSON.parse(txt);
+      Object.keys(data.settings||{}).forEach(function(id){
+        var el = $(id); if(!el) return;
+        if(el.type === "checkbox") el.checked = !!data.settings[id];
+        else el.value = data.settings[id];
+      });
+      $("scaleval").textContent = $("scale").value+" %";
+      $("headval").textContent = $("headsize").value+" px";
+      $("cropval").textContent = $("croptop").value+" %";
+      $("izoomval").textContent = $("izoom").value+" %";
+      var jobs = (data.shots||[]).map(function(s){
+        return loadImage(s.image).then(function(img){
+          return { id:nextId++, img:img, headline:s.headline||"", sub:s.sub||"", canvas:null };
+        });
+      });
+      if(data.logo) jobs.push(loadImage(data.logo).then(function(img){ iconLogo = img; return null; }));
+      return Promise.all(jobs).then(function(list){
+        shots = list.filter(Boolean);
+        renderList(); renderPlates(); drawIcons(); drawFeature();
+        syncText(); renderPalettes(); syncContrast(); renderTree(); renderStatus();
+      });
+    }).catch(function(){ alert("Die Datei ließ sich nicht lesen. Ist es eine mit diesem Tool gespeicherte Projektdatei?"); });
+  }
+
+  /* ---------- export ---------- */
+  function metaBase(){ return "fastlane/metadata/android/"+$("mLocale").value+"/"; }
+  function renderTree(){
+    var loc = $("mLocale").value;
+    $("tree").innerHTML =
+      "<b>fastlane/metadata/android/"+loc+"/</b>\n"+
+      "  title.txt\n  short_description.txt\n  full_description.txt\n"+
+      "  changelogs/default.txt\n"+
+      "  <b>images/</b>\n"+
+      "    icon.png              512 × 512\n"+
+      "    featureGraphic.jpg    1024 × 500\n"+
+      "    <b>phoneScreenshots/</b>  1_.jpg … 8_.jpg\n"+
+      "<b>android/app/src/main/res/</b>\n"+
+      "  mipmap-mdpi … mipmap-xxxhdpi/\n"+
+      "    ic_launcher.png\n    ic_launcher_foreground.png\n"+
+      "    ic_launcher_background.png\n    ic_launcher_monochrome.png\n"+
+      "  mipmap-anydpi-v26/ic_launcher.xml\n";
+  }
+
+  function checks(){
+    return [
+      { ok: !!$("mTitle").value.trim() && $("mTitle").value.length <= 30, label:"App-Name", note:"Höchstens 30 Zeichen." },
+      { ok: !!$("mShort").value.trim() && $("mShort").value.length <= 80, label:"Kurzbeschreibung", note:"Höchstens 80 Zeichen, steht unter dem Titel." },
+      { ok: !!$("mFull").value.trim() && $("mFull").value.length <= 4000, label:"Vollständige Beschreibung", note:"Höchstens 4000 Zeichen." },
+      { ok: !!iconLogo, label:"App-Icon 512 × 512", note:"32-Bit-PNG, unter 1 MB, ohne vorgerundete Ecken." },
+      { ok: true, label:"Feature Graphic 1024 × 500", note:"Immer erforderlich, auch ohne Vorschauvideo." },
+      { ok: shots.length >= 2, label:"Screenshots", note:"Mindestens 2, ab 4 im Hochformat Featuring-fähig, maximal 8." },
+      { ok: null, label:"Datenschutzerklärung", note:"URL in der Console hinterlegen — außerhalb dieses Tools." },
+      { ok: null, label:"Data-Safety-Formular", note:"Muss zur Beschreibung und zum tatsächlichen Verhalten passen." },
+      { ok: null, label:"Inhaltseinstufung", note:"Fragebogen in der Console ausfüllen." }
+    ];
+  }
+  function renderStatus(){
+    var host = $("statuslist"); host.innerHTML = "";
+    checks().forEach(function(c){
+      var li = document.createElement("li");
+      if(c.ok === true) li.className = "done";
+      var m = document.createElement("span"); m.className = "mark";
+      m.textContent = c.ok === true ? "✓" : (c.ok === null ? "·" : "○");
+      var d = document.createElement("div");
+      d.innerHTML = "<span>"+c.label+"</span><small>"+c.note+"</small>";
+      li.appendChild(m); li.appendChild(d); host.appendChild(li);
+    });
+  }
+  function updateReadout(){
+    var texts = ["mTitle","mShort","mFull"].filter(function(id){
+      return $(id).value.trim() && $(id).value.length <= LIMITS[id];
+    }).length;
+    var items = [
+      ["Screens", shots.length+"/8", shots.length >= 2],
+      ["Texte", texts+"/3", texts === 3],
+      ["Icon", iconLogo ? "ok" : "fehlt", !!iconLogo],
+      ["Graphic", "ok", true]
+    ];
+    $("readout").innerHTML = items.map(function(it){
+      return '<div class="'+(it[2]?"done":"")+'"><b>'+it[1]+'</b>'+it[0]+'</div>';
+    }).join("");
+    if(!$("panel-export").hidden) renderStatus();
+  }
+
+  function buildZip(full){
+    if(typeof JSZip === "undefined"){
+      alert("Die ZIP-Bibliothek konnte nicht geladen werden. Prüfe die Verbindung oder lade die Assets einzeln.");
+      return;
+    }
+    var zip = new JSZip(), base = metaBase(), jobs = [];
+    zip.file(base+"title.txt", $("mTitle").value.trim()+"\n");
+    zip.file(base+"short_description.txt", $("mShort").value.trim()+"\n");
+    zip.file(base+"full_description.txt", $("mFull").value.trim()+"\n");
+    zip.file(base+"changelogs/default.txt", $("mWhats").value.trim()+"\n");
+    zip.file("README.txt",
+      "Play-Store-Paket\n\n"+
+      "1. fastlane/ in das Projektwurzelverzeichnis legen.\n"+
+      "2. Paketname in Appfile eintragen: "+$("mPackage").value+"\n"+
+      "3. Hochladen mit: fastlane supply --skip_upload_apk\n\n"+
+      "4. android/app/src/main/res/ in dein Projekt mergen (Launcher-Icons).\n\n"+
+      "Manuell in der Console bleiben: Datenschutz-URL, Data-Safety-Formular, Inhaltseinstufung.\n");
+
+    if(iconLogo){
+      var st = offscreen(1,1); drawIcon(st,512,true);
+      jobs.push(toBlob(st,"image/png").then(function(b){ zip.file(base+"images/icon.png", b); }));
+    }
+    jobs.push(toBlob($("fcanvas"),"image/jpeg").then(function(b){ zip.file(base+"images/featureGraphic.jpg", b); }));
+    shots.forEach(function(shot,i){
+      if(!shot.canvas) return;
+      jobs.push(toBlob(shot.canvas,"image/jpeg").then(function(b){
+        zip.file(base+"images/phoneScreenshots/"+(i+1)+"_screenshot.jpg", b);
+      }));
+    });
+    if(full) jobs.push(addLauncherFiles(zip));
+
+    Promise.all(jobs).then(function(){
+      return zip.generateAsync({type:"blob"});
+    }).then(function(blob){
+      saveBlob(blob, "play-listing-"+$("mLocale").value+".zip");
+    }).catch(function(){ alert("Der Export ist fehlgeschlagen. Lade die Assets notfalls einzeln."); });
+  }
+  $("zipall").addEventListener("click", function(){ buildZip(true); });
+  $("zipmeta").addEventListener("click", function(){ buildZip(false); });
+  $("mLocale").addEventListener("change", renderTree);
+  $("projsave").addEventListener("click", saveProject);
+  $("projload").addEventListener("click", function(){ $("projfile").click(); });
+  $("projfile").addEventListener("change", function(){
+    if(this.files.length) loadProject(this.files[0]);
+    this.value = "";
+  });
+
+  /* ---------- wiring for the new pieces ---------- */
+  $("statusbar").addEventListener("change", repaint);
+  $("croptop").addEventListener("input", function(){
+    $("cropval").textContent = $("croptop").value+" %"; repaint();
+  });
+  ["bg1","bg2","textcolor"].forEach(function(id){
+    $(id).addEventListener("input", syncContrast);
+  });
+
+  /* ---------- boot ---------- */
+  function boot(){
+    if(booted) return;
+    booted = true;
+    drawFeature(); drawIcons(); repaint(); syncText();
+    renderPalettes(); syncContrast(); renderTree(); renderStatus();
+  }
+  if(document.fonts && document.fonts.ready){ document.fonts.ready.then(boot); setTimeout(boot,2500); }
+  else boot();
+})();
+</script>
+</body>
+</html>
