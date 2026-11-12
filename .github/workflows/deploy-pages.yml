@@ -28,18 +28,20 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - name: Vorhandensein von docs/index.html prüfen
+      - name: Dateien der Seite prüfen
         run: |
-          if [ ! -f docs/index.html ]; then
-            echo "docs/index.html fehlt — Pages hätte nichts auszuliefern."
-            exit 1
-          fi
+          for f in docs/index.html docs/assets/app.css docs/assets/app.js docs/assets/vendor/jszip.min.js; do
+            if [ ! -f "$f" ]; then
+              echo "$f fehlt — die Seite wäre unvollständig."
+              exit 1
+            fi
+          done
 
       # Hier später einen Build einschieben, falls docs/ generiert wird:
-      # - uses: actions/setup-node@v4
-      #   with: { node-version: 20, cache: npm }
+      # - uses: actions/setup-node@v5
+      #   with: { node-version: 22, cache: npm }
       # - run: npm ci && npm run build
 
       - uses: actions/configure-pages@v5

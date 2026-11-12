@@ -1,0 +1,37 @@
+name: Prüfen
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tools/play-publish/package-lock.json
+
+      - name: Abhängigkeiten
+        working-directory: tools/play-publish
+        run: npm ci --no-audit --no-fund
+
+      - name: Tests des Upload-Skripts
+        working-directory: tools/play-publish
+        run: npm test
+
+      - name: Syntax des Browser-Tools
+        run: node --check docs/assets/app.js

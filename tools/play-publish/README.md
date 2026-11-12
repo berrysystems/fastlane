@@ -43,14 +43,27 @@ versuchen.
 
 ```bash
 cd tools/play-publish
-npm install
-cp .env.example .env      # und den Schlüssel eintragen
 ```
+
+```bash
+npm ci
+```
+
+```bash
+cp .env.example .env
+```
+
+Dann den Schlüssel in `.env` eintragen. Das Skript liest die Datei selbst —
+aus dem aktuellen Verzeichnis und aus `tools/play-publish/`. Variablen, die in
+der Umgebung schon gesetzt sind, haben Vorrang. Braucht Node 20 oder neuer.
 
 ## Benutzen
 
 ```bash
-# Erst prüfen — validiert lokal und bei Google, committet nichts
+# Nur lokal prüfen — ohne Zugangsdaten, ohne Netzwerk
+node publish.js --check
+
+# Probelauf — validiert zusätzlich bei Google, committet nichts
 node publish.js --package com.example.app --dry-run
 
 # Nur den Store-Eintrag aktualisieren
@@ -64,17 +77,25 @@ node publish.js --package com.example.app \
 
 Weitere Optionen zeigt `node publish.js --help`.
 
+Das Metadatenverzeichnis wird relativ zum Aufrufort gesucht, sonst im
+Repo-Wurzelverzeichnis. Beide Aufrufe funktionieren also gleich:
+`node publish.js …` in diesem Ordner und `node tools/play-publish/publish.js …`
+von oben.
+
 ## Was vorher geprüft wird
 
 Bevor überhaupt ein Request rausgeht, liest das Skript die Bildheader und die
 Textlängen. Das fängt die Fehler ab, die Google sonst erst nach dem Upload mit
 einer knappen Meldung quittiert:
 
-- Icon exakt 512 × 512 und unter 1 MB
-- Feature Graphic exakt 1024 × 500
-- Screenshots zwischen 320 und 3840 px, Seitenverhältnis höchstens 2:1, ohne Alphakanal
+- Icon als PNG, exakt 512 × 512 und unter 1 MB
+- Feature Graphic exakt 1024 × 500, ohne Alphakanal
+- Screenshots zwischen 320 und 3840 px, Seitenverhältnis höchstens 2:1,
+  ohne Alphakanal, höchstens 8 MB
 - mindestens 2 und höchstens 8 Phone-Screenshots
-- Titel 30, Kurzbeschreibung 80, Beschreibung 4000 Zeichen
+- Titel 30, Kurzbeschreibung 80, Beschreibung 4000, Änderungshinweise 500 Zeichen
+
+Ordner, deren Name kein Sprachcode ist, werden übersprungen und gemeldet.
 
 ## Erwartete Ordnerstruktur
 
@@ -106,6 +127,15 @@ sonst sammeln sich alte Screenshots im Eintrag an.
 
 Der Workflow läuft manuell über *Actions → Run workflow*, standardmäßig als
 Probelauf. Erst wenn du den Haken entfernst, wird veröffentlicht.
+
+## Tests
+
+```bash
+npm test
+```
+
+Die Tests prüfen die lokale Validierung und das Einlesen der `.env` — ohne
+Netzwerk und ohne Zugangsdaten.
 
 ## Grenzen
 

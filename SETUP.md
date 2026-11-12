@@ -5,12 +5,14 @@
 ```
 mein-app-repo/
 ├─ docs/
-│  └─ index.html                     das Browser-Tool
+│  ├─ index.html                     das Browser-Tool
+│  └─ assets/                        Styles, Skript, Schriften, JSZip
 ├─ tools/
-│  └─ play-publish/                  publish.js, package.json, README.md
+│  └─ play-publish/                  publish.js, package.json, Tests
 ├─ fastlane/
 │  └─ metadata/android/de-DE/        Ziel des ZIP-Exports
 ├─ .github/workflows/
+│  ├─ ci.yml                         Tests bei jedem Push und Pull Request
 │  ├─ deploy-pages.yml               veröffentlicht docs/
 │  └─ publish-listing.yml            lädt das Listing hoch
 └─ .gitignore
@@ -47,5 +49,9 @@ Logs sichtbar.
 3. *Actions → Play-Listing veröffentlichen* starten, erst als Probelauf
 4. Wenn die Prüfung sauber durchläuft, den Haken entfernen und erneut starten
 
-Die Projektdatei aus dem Tool (`*-projekt.json`) kannst du mit ins Repo
-legen. Dann fängst du beim nächsten Release nicht bei null an.
+Der Workflow prüft die Dateien zuerst lokal (`--check`) und bricht ab, bevor
+überhaupt Zugangsdaten angefasst werden, wenn etwas nicht passt.
+
+Das Tool speichert den Stand automatisch im Browser. Die Projektdatei
+(`*-projekt.json`, über *Sichern*) kannst du zusätzlich mit ins Repo legen —
+dann fängt auch ein anderer Rechner beim nächsten Release nicht bei null an.

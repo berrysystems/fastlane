@@ -17,3 +17,7 @@ service-account*.json
 # Betriebssystem
 .DS_Store
 Thumbs.db
+
+# Lokale Arbeitsdateien
+*.log
+/play-listing-*.zip
