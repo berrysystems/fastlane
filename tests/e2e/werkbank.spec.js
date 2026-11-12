@@ -330,6 +330,7 @@ test("Briefing: Auftrag enthält die Angaben, die Antwort füllt Texte und Capti
   await expect(page.locator("#mTitle")).toHaveValue("");
   await page.locator("#tab-brief").click();
   await expect(page.locator("#bWhat")).toHaveValue("Erfasst Arbeitszeiten und schreibt daraus Rechnungen.");
+  await expect(page.locator(".noterow input").nth(0)).toHaveValue("Startseite mit laufender Uhr");
 });
 
 test("Import: Fastlane-ZIP füllt die Texte aller Sprachen", async ({ page }) => {
@@ -361,6 +362,11 @@ test("Autosave überlebt das Neuladen, Projektdatei stellt alles wieder her", as
   await addLogo(page);
   await addShots(page, 2);
   await captions(page).nth(0).fill("Bleibt erhalten");
+  await page.locator(".shotrow").nth(1).locator("summary").click();
+  await page.locator(".shotrow").nth(1).locator(".shotopts select").selectOption("bleed");
+  await page.locator("#tab-brief").click();
+  await page.locator(".noterow input").nth(0).fill("Startseite");
+  await page.locator("#tab-shots").click();
   await page.locator("#bg2").fill("#123456");
   await fillTexts(page);
   await expect(page.locator("#savestate")).toHaveText("Automatisch gespeichert");
@@ -373,6 +379,9 @@ test("Autosave überlebt das Neuladen, Projektdatei stellt alles wieder her", as
   await expect(page.locator("#mTitle")).toHaveValue("Tagwerk");
   await expect(page.locator("#bg2")).toHaveValue("#123456");
   await expect(page.locator("#st-icon")).toHaveText("✓");
+  // Angaben je Screenshot überleben das Wiederherstellen.
+  await expect(page.locator(".noterow input").nth(0)).toHaveValue("Startseite");
+  await expect(page.locator(".shotrow").nth(1).locator(".shotopts select")).toHaveValue("bleed");
 
   const [download] = await Promise.all([page.waitForEvent("download"), page.locator("#projsave").click()]);
   expect(download.suggestedFilename()).toBe("tagwerk-projekt.json");
@@ -392,6 +401,8 @@ test("Autosave überlebt das Neuladen, Projektdatei stellt alles wieder her", as
   await expect(captions(page).nth(0)).toHaveValue("Bleibt erhalten");
   await expect(page.locator("#mTitle")).toHaveValue("Tagwerk");
   await expect(page.locator("#bg2")).toHaveValue("#123456");
+  await expect(page.locator(".noterow input").nth(0)).toHaveValue("Startseite");
+  await expect(page.locator(".shotrow").nth(1).locator(".shotopts select")).toHaveValue("bleed");
 });
 
 test("Projektdateien der Vorversion werden übernommen", async ({ page }) => {

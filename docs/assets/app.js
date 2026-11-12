@@ -881,7 +881,9 @@
   }
 
   function newShot(asset, extra = {}) {
-    return { ...asset, captions: {}, note: "", layout: "", bg: null, canvas: null, ...extra };
+    // Vorgaben zuerst: `asset` darf beim Wiederherstellen bereits Notiz und
+    // Layout mitbringen. Das Canvas entsteht immer neu.
+    return { captions: {}, note: "", layout: "", bg: null, ...asset, ...extra, canvas: null };
   }
   async function addShots(files) {
     let images = files.filter(isRaster);
@@ -1627,6 +1629,9 @@
   // ---- Momentaufnahmen. Bilder werden nur referenziert, nie kopiert.
   function capture() {
     commitLocale();
+    // Captions für jede Sprache anlegen. Sonst entstünden sie erst beim
+    // Ansehen einer Sprache — und das bloße Umschalten zählte als Änderung.
+    state.shots.forEach((shot) => state.locales.forEach((locale) => caption(shot, locale)));
     return {
       settings: readSettings(),
       locales: [...state.locales],
