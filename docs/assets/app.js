@@ -1812,11 +1812,47 @@
     stale.forEach((url) => URL.revokeObjectURL(url));
   }
 
+  // WebKit kann Blobs nicht zuverlässig in der IndexedDB ablegen. Deshalb
+  // wandern die Rohdaten hinein und werden beim Laden wieder zu Blobs. Der
+  // Zwischenspeicher verhindert, dass jede Sicherung alle Bilder neu einliest.
+  const packed = new WeakMap();
+  async function pack(blob) {
+    if (!blob) return null;
+    let entry = packed.get(blob);
+    if (!entry) {
+      entry = { type: blob.type, buffer: await blob.arrayBuffer() };
+      packed.set(blob, entry);
+    }
+    return entry;
+  }
+  function unpack(entry) {
+    if (!entry || entry instanceof Blob) return entry || null;   // Blob: Stand aus einer früheren Fassung
+    return new Blob([entry.buffer], { type: entry.type || "" });
+  }
+  async function packSnapshot(snap) {
+    return {
+      ...snap,
+      shots: await Promise.all(snap.shots.map(async (s) => ({ ...s, blob: await pack(s.blob) }))),
+      logo: await pack(snap.logo),
+      featLogo: await pack(snap.featLogo),
+      font: snap.font ? { ...snap.font, blob: await pack(snap.font.blob) } : null,
+    };
+  }
+  function unpackSnapshot(saved) {
+    return {
+      ...saved,
+      shots: (Array.isArray(saved.shots) ? saved.shots : []).map((s) => ({ ...s, blob: unpack(s.blob) })),
+      logo: unpack(saved.logo),
+      featLogo: unpack(saved.featLogo),
+      font: saved.font && saved.font.blob ? { ...saved.font, blob: unpack(saved.font.blob) } : null,
+    };
+  }
+
   let saveTimer = 0, autosave = true;
   function setSaveState(text) { $("savestate").textContent = text; }
   async function persist() {
     if (!autosave) return;
-    try { await local.save(snapshot()); setSaveState("Automatisch gespeichert"); }
+    try { await local.save(await packSnapshot(snapshot())); setSaveState("Automatisch gespeichert"); }
     catch (err) {
       console.warn("Autosave fehlgeschlagen", err);
       autosave = false;
@@ -2038,7 +2074,7 @@
     try { saved = await local.load(); }
     catch (_) { autosave = false; setSaveState("Autosave nicht möglich — bitte „Sichern“ nutzen"); }
     try {
-      if (saved) { await restore(saved); setSaveState("Letzter Stand wiederhergestellt"); }
+      if (saved) { await restore(unpackSnapshot(saved)); setSaveState("Letzter Stand wiederhergestellt"); }
     } catch (err) {
       console.warn("Gespeicherter Stand unlesbar", err);
       saved = null;
