@@ -23,38 +23,51 @@ Hochladen einrichten: siehe [tools/play-publish/README.md](tools/play-publish/RE
 
 ## Was die Werkbank kann
 
-Die Oberfläche führt in sechs Schritten zum fertigen Paket. Jeder Schritt
+Die Oberfläche führt in sieben Schritten zum fertigen Paket. Jeder Schritt
 zeigt oben seinen Stand, die Checkliste im letzten Schritt springt direkt zu
 dem, was noch fehlt.
 
 1. **Icon** — Store-Icon 512 × 512 plus den adaptiven Launcher-Satz in allen
    fünf Dichten, samt Monochrome-Ebene, Legacy- und Rund-Icons und den
-   passenden XML-Dateien. Die Vorschau zeigt das Ergebnis unter Kreis-,
-   Squircle- und Rechteckmaske.
+   passenden XML-Dateien.
 2. **Screenshots** — fünf Layouts, Panorama über mehrere Frames, saubere
-   Statusleiste statt der aufgenommenen, Vorschau in Thumbnail-Größe.
-   Tablet-Formate landen automatisch im richtigen Ordner
-   (`sevenInchScreenshots`, `tenInchScreenshots`).
-3. **Feature Graphic** — 1024 × 500 mit Sicherheitsbereich. Titel und
-   Untertitel kommen automatisch aus den Store-Texten, solange du nichts
-   anderes einträgst.
+   Statusleiste statt der aufgenommenen. Reihenfolge per Ziehen; einzelne
+   Screenshots können ein eigenes Layout und eigene Farben bekommen, die
+   Überschriften eine eigene Markenschrift. Tablet-Formate landen automatisch
+   im richtigen Ordner.
+3. **Briefing** — was die App tut, für wen, was die Screenshots zeigen.
+   Daraus entsteht ein fertiger Auftrag für einen KI-Assistenten; dessen
+   Antwort füllt Store-Texte, Namensalternativen und Captions für alle
+   Sprachen. Die Seite selbst spricht mit keiner KI und braucht keinen
+   API-Schlüssel.
 4. **Texte** — Zeichenzähler auf die Limits der Console, Vorschau des
    Anrisses und eine Prüfung auf Formulierungen, die bei der Review auffallen.
-5. **Vorschau** — Icon, Titel und Screenshots zusammen, wie auf der Store-Seite.
-6. **Export** — Checkliste, ZIP in Fastlane-Struktur, nächster Befehl zum Kopieren.
+   Ein bestehender Eintrag lässt sich als ZIP oder Fastlane-Ordner importieren.
+5. **Feature Graphic** — 1024 × 500 mit Sicherheitsbereich. Titel und
+   Untertitel kommen aus den Store-Texten, solange du nichts anderes einträgst.
+6. **Vorschau** — Icon, Titel und Screenshots zusammen, wie auf der Store-Seite.
+7. **Export** — Checkliste, ZIP in Fastlane-Struktur, nächster Befehl zum Kopieren.
 
 Dazu:
 
+- **Mehrere Sprachen** in einem Projekt (Auswahl oben rechts). Jede Sprache
+  hat eigene Store-Texte und Captions; der Export rendert Screenshots und
+  Feature Graphic für jede Sprache und legt sie in ihren Ordner.
+- **Rückgängig / Wiederholen** für alles, auch für entfernte Bilder und
+  übernommene Textvorschläge (Strg+Z außerhalb von Textfeldern).
 - **Farben** aus dem Logo, mit Kontrastprüfung für Captions und Feature Graphic.
 - **Automatisches Speichern** im Browser (IndexedDB). Nach einem Neuladen ist
   der letzte Stand wieder da.
 - **Projektdatei** (`*-projekt.json`) über *Sichern* / *Öffnen* — zum
   Mitnehmen, Weitergeben oder Einchecken. Sie enthält die Originalbilder
-  unverändert.
+  unverändert. Dateien älterer Versionen werden übernommen.
 - Helles und dunkles Design folgen der Systemeinstellung.
 
 ## Ablauf bei einem Release
 
+0. Gibt es die App schon im Store: Texte mit
+   `node tools/play-publish/publish.js --package … --pull` holen und in der
+   Werkbank importieren
 1. Seite öffnen, Screenshots und Texte pflegen, ZIP exportieren
 2. Den Ordner `fastlane/` aus dem ZIP ins Repo legen und committen
 3. `node tools/play-publish/publish.js --check` — prüft lokal, ohne Zugangsdaten
@@ -72,6 +85,7 @@ docs/
   assets/fonts/         Schriften (SIL Open Font License)
   assets/vendor/        JSZip 3.10.1 (MIT)
 tools/play-publish/     Upload-Skript mit Tests
+tests/e2e/              Browser-Tests der Werkbank (Playwright)
 fastlane/metadata/      Ziel des ZIP-Exports
 .github/workflows/      Seite ausliefern, Listing hochladen, Tests
 ```
@@ -80,17 +94,20 @@ fastlane/metadata/      Ziel des ZIP-Exports
 
 Das Browser-Tool hat bewusst keinen Build: Datei ändern, Seite neu laden.
 
-```bash
-cd tools/play-publish
-```
+Tests des Upload-Skripts:
 
 ```bash
-npm ci
+cd tools/play-publish && npm ci && npm test
 ```
 
+Browser-Tests der Werkbank (einmalig vorher `npx playwright install`):
+
 ```bash
-npm test
+cd tests/e2e && npm ci && npx playwright test
 ```
+
+Die CI führt beides bei jedem Pull Request aus, die Browser-Tests in
+Chromium, Firefox und WebKit.
 
 ## Grenzen
 
@@ -98,6 +115,9 @@ Die API kann einen Eintrag nur aktualisieren, nicht anlegen. Die erste
 Veröffentlichung machst du von Hand in der Console. Ebenso Datenschutz-URL,
 Data-Safety-Formular und Inhaltseinstufung.
 
-Die Werkbank pflegt eine Sprache pro Projekt. Für weitere Sprachen das
-Projekt sichern, Sprache und Texte ändern und erneut exportieren — die ZIPs
-ergänzen sich im Ordner `fastlane/metadata/android/`.
+Screenshots müssen die echte App zeigen. Die Werkbank rahmt und beschriftet
+sie, erfindet aber keine Oberflächen — das wäre ein Ablehnungsgrund bei der
+Review.
+
+Texte aus dem Briefing sind Vorschläge. Die Prüfung in Schritt 4 fängt
+Richtlinienverstöße und Überlängen ab, das Gegenlesen ersetzt sie nicht.

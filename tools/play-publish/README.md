@@ -77,6 +77,25 @@ node publish.js --package com.example.app \
 
 Weitere Optionen zeigt `node publish.js --help`.
 
+## Bestehenden Eintrag herunterladen
+
+Gibt es die App schon im Store, holt `--pull` die Texte aller Sprachen in die
+Fastlane-Struktur — als Ausgangspunkt statt eines leeren Blatts:
+
+```bash
+node publish.js --package com.example.app --pull
+```
+
+Im Store ändert sich dabei nichts. Weichen lokale Dateien vom Store ab, bricht
+das Skript ab und nennt sie; `--force` überschreibt, `--metadata <ordner>` lädt
+woandershin. Bilder werden nicht geladen — die fertigen Store-Screenshots
+taugen nicht als Rohmaterial.
+
+Danach in der Werkbank unter *Texte → Fastlane-Ordner importieren* den Ordner
+`fastlane` wählen. Ohne lokales Node geht dasselbe über den Workflow
+*Play-Listing herunterladen*: er stellt ein ZIP bereit, das sich mit
+*ZIP importieren* einlesen lässt.
+
 Das Metadatenverzeichnis wird relativ zum Aufrufort gesucht, sonst im
 Repo-Wurzelverzeichnis. Beide Aufrufe funktionieren also gleich:
 `node publish.js …` in diesem Ordner und `node tools/play-publish/publish.js …`
@@ -125,6 +144,9 @@ sonst sammeln sich alte Screenshots im Eintrag an.
 - Secret `PLAY_SERVICE_ACCOUNT_KEY` — der komplette JSON-Inhalt
 - Variable `PACKAGE_NAME`
 
+`.github/workflows/pull-listing.yml` nutzt dieselben Angaben und lädt nur
+herunter.
+
 Der Workflow läuft manuell über *Actions → Run workflow*, standardmäßig als
 Probelauf. Erst wenn du den Haken entfernst, wird veröffentlicht.
 
@@ -134,8 +156,9 @@ Probelauf. Erst wenn du den Haken entfernst, wird veröffentlicht.
 npm test
 ```
 
-Die Tests prüfen die lokale Validierung und das Einlesen der `.env` — ohne
-Netzwerk und ohne Zugangsdaten.
+Die Tests prüfen die lokale Validierung, das Einlesen der `.env` und das
+Herunterladen gegen eine nachgestellte API — ohne Netzwerk und ohne
+Zugangsdaten.
 
 ## Grenzen
 

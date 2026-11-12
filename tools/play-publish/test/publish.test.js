@@ -5,7 +5,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { readImageInfo, readLocale, validateLocale, collectLocales, loadEnvFile } = require("../publish.js");
+const { readImageInfo, readLocale, validateLocale, collectLocales, loadEnvFile, pullListings } = require("../publish.js");
 
 /** Kleinstes PNG, das die Header-Prüfung braucht: Signatur + IHDR. */
 function png(width, height, colourType = 2) {
@@ -115,4 +115,44 @@ test(".env: JSON-Werte bleiben ganz, gesetzte Variablen gewinnen", () => {
   assert.equal(JSON.parse(process.env.PP_TEST_KEY).note, "a=b #c");
   assert.equal(process.env.PP_TEST_QUOTED, "mit Leerzeichen");
   assert.equal(process.env.PP_TEST_SET, "aus-umgebung");
+});
+
+/** Stellt nur die Aufrufe nach, die pullListings braucht. */
+function fakePublisher(listings) {
+  const calls = [];
+  return {
+    calls,
+    edits: {
+      insert: async () => { calls.push("insert"); return { data: { id: "edit-1" } }; },
+      delete: async () => { calls.push("delete"); },
+      commit: async () => { calls.push("commit"); },
+      listings: { list: async () => { calls.push("list"); return { data: { listings } }; } },
+    },
+  };
+}
+
+test("--pull schreibt die Texte aller Sprachen und committet nichts", async () => {
+  const root = fixture({});
+  const publisher = fakePublisher([
+    { language: "de-DE", title: "Tagwerk", shortDescription: "Kurz.", fullDescription: "Lang.", video: "https://example.com/v" },
+    { language: "en-US", title: "Dayworks", shortDescription: "Short.", fullDescription: "Long." },
+    { language: "../../boese", title: "x" },
+  ]);
+  assert.deepEqual(await pullListings(publisher, "de.beispiel.app", root), ["de-DE", "en-US"]);
+  assert.equal(fs.readFileSync(path.join(root, "de-DE/title.txt"), "utf8"), "Tagwerk\n");
+  assert.equal(fs.readFileSync(path.join(root, "en-US/full_description.txt"), "utf8"), "Long.\n");
+  assert.equal(fs.readFileSync(path.join(root, "de-DE/video.txt"), "utf8"), "https://example.com/v\n");
+  assert.deepEqual(publisher.calls, ["insert", "list", "delete"]);
+  assert.deepEqual(fs.readdirSync(root).sort(), ["de-DE", "en-US"]);
+  // Was heruntergeladen wurde, besteht anschließend die Textprüfung.
+  assert.deepEqual(validateLocale(readLocale(root, "en-US"), { images: false }), []);
+});
+
+test("--pull überschreibt abweichende lokale Texte nur mit --force", async () => {
+  const root = fixture({ "de-DE/title.txt": "Lokal geändert\n", "de-DE/short_description.txt": "Kurz.\n" });
+  const listings = [{ language: "de-DE", title: "Tagwerk", shortDescription: "Kurz.", fullDescription: "Lang." }];
+  await assert.rejects(pullListings(fakePublisher(listings), "de.beispiel.app", root), /title\.txt/);
+  assert.equal(fs.readFileSync(path.join(root, "de-DE/title.txt"), "utf8"), "Lokal geändert\n");
+  await pullListings(fakePublisher(listings), "de.beispiel.app", root, { force: true });
+  assert.equal(fs.readFileSync(path.join(root, "de-DE/title.txt"), "utf8"), "Tagwerk\n");
 });

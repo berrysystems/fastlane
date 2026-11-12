@@ -30,6 +30,8 @@ const OPTIONS = {
   "skip-listings": { type: "boolean", default: false },
   "dry-run": { type: "boolean", default: false },
   check: { type: "boolean", default: false },
+  pull: { type: "boolean", default: false },
+  force: { type: "boolean", default: false },
   verbose: { type: "boolean", default: false },
   help: { type: "boolean", short: "h", default: false },
 };
@@ -52,6 +54,9 @@ Optionen
   --skip-images         Texte aktualisieren, Bilder unangetastet lassen
   --skip-listings       Nur Binary hochladen
   --check               Nur lokal prüfen — ohne Zugangsdaten, ohne Netzwerk
+  --pull                Texte des bestehenden Eintrags aus Play herunterladen,
+                        statt etwas hochzuladen. Ändert im Store nichts.
+  --force               Mit --pull: vorhandene lokale Texte überschreiben
   --dry-run             Zusätzlich von Google validieren lassen, nichts committen
   --verbose             Mehr Ausgabe
   -h, --help            Diese Hilfe
@@ -329,6 +334,61 @@ function buildAuth(google, keyFlag) {
 }
 
 /* ------------------------------------------------------------------ *
+ * Bestehenden Eintrag herunterladen
+ *
+ * Schreibt die Texte aller Sprachen in die Fastlane-Struktur — als
+ * Ausgangspunkt für die Werkbank (Texte → „Fastlane-Ordner importieren“).
+ * Der dafür nötige Edit wird nie committet, im Store ändert sich nichts.
+ * ------------------------------------------------------------------ */
+
+async function pullListings(publisher, packageName, metadataDir, { force = false } = {}) {
+  const { data: edit } = await publisher.edits.insert({ packageName });
+  let listings;
+  try {
+    const { data } = await publisher.edits.listings.list({ packageName, editId: edit.id });
+    listings = data.listings || [];
+  } finally {
+    try { await publisher.edits.delete({ packageName, editId: edit.id }); } catch { /* Edit verfällt von selbst */ }
+  }
+
+  const writes = [];
+  for (const listing of listings) {
+    // Der Sprachcode kommt von außen und wird zum Ordnernamen.
+    if (!LOCALE_RE.test(listing.language || "")) continue;
+    const dir = path.join(metadataDir, listing.language);
+    for (const [field, spec] of Object.entries(TEXT_FILES)) {
+      writes.push({ file: path.join(dir, spec.file), text: listing[field] || "" });
+    }
+    if (listing.video) writes.push({ file: path.join(dir, "video.txt"), text: listing.video });
+  }
+
+  const conflicts = writes.filter((w) => {
+    const current = readTrimmed(w.file);
+    return current !== null && current !== "" && current !== w.text.trim();
+  });
+  if (conflicts.length && !force) {
+    throw new UsageError(
+      "Diese lokalen Dateien weichen vom Store ab und würden überschrieben:\n" +
+        conflicts.map((c) => "  " + path.relative(process.cwd(), c.file)).join("\n") +
+        "\nMit --force trotzdem überschreiben, oder mit --metadata in einen anderen Ordner laden."
+    );
+  }
+  for (const w of writes) {
+    fs.mkdirSync(path.dirname(w.file), { recursive: true });
+    fs.writeFileSync(w.file, w.text.trim() + "\n");
+  }
+  return [...new Set(writes.map((w) => path.basename(path.dirname(w.file))))].sort();
+}
+
+/** Lädt googleapis erst, wenn wirklich mit Play gesprochen wird. */
+function connect(keyFlag) {
+  let google;
+  try { ({ google } = require("googleapis")); }
+  catch { throw new UsageError("Das Paket googleapis fehlt. Führe in tools/play-publish zuerst `npm ci` aus."); }
+  return google.androidpublisher({ version: "v3", auth: buildAuth(google, keyFlag) });
+}
+
+/* ------------------------------------------------------------------ *
  * Ablauf
  * ------------------------------------------------------------------ */
 
@@ -345,6 +405,20 @@ async function main() {
 
   loadEnvFile(path.resolve(".env"));
   loadEnvFile(path.join(__dirname, ".env"));
+
+  if (args.pull) {
+    if (args.aab || args.apk || args.check || args["dry-run"]) {
+      throw new UsageError("--pull lädt nur herunter und lässt sich nicht mit --aab, --apk, --check oder --dry-run kombinieren.");
+    }
+    const packageName = args.package || process.env.PACKAGE_NAME;
+    if (!packageName) throw new UsageError("Paketname fehlt. Nutze --package oder PACKAGE_NAME.");
+    const dir = resolveMetadataDir(args.metadata);
+    const pulled = await pullListings(connect(args.key), packageName, dir, { force: args.force });
+    if (!pulled.length) { log("Im Store ist für diese App noch kein Eintrag hinterlegt."); return; }
+    log(`Texte heruntergeladen für ${pulled.length} Sprache(n): ${pulled.join(", ")}`);
+    log(`Abgelegt in ${path.relative(process.cwd(), dir) || "."}. Bilder werden nicht geladen — im Store ändert sich nichts.`);
+    return;
+  }
 
   const skipListings = args["skip-listings"];
   const skipImages = args["skip-images"] || skipListings;
@@ -388,12 +462,7 @@ async function main() {
   const packageName = args.package || process.env.PACKAGE_NAME;
   if (!packageName) throw new UsageError("Paketname fehlt. Nutze --package oder PACKAGE_NAME.");
 
-  let google;
-  try { ({ google } = require("googleapis")); }
-  catch { throw new UsageError("Das Paket googleapis fehlt. Führe in tools/play-publish zuerst `npm ci` aus."); }
-
-  const auth = buildAuth(google, args.key);
-  const publisher = google.androidpublisher({ version: "v3", auth });
+  const publisher = connect(args.key);
 
   const { data: edit } = await publisher.edits.insert({ packageName });
   const editId = edit.id;
@@ -517,4 +586,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { readImageInfo, validateLocale, readLocale, collectLocales, loadEnvFile, IMAGE_RULES };
+module.exports = { readImageInfo, validateLocale, readLocale, collectLocales, loadEnvFile, pullListings, IMAGE_RULES };

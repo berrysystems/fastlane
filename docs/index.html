@@ -24,6 +24,8 @@
     </div>
     <div class="appactions">
       <span class="savestate" id="savestate" role="status"></span>
+      <button class="btn quiet icon" type="button" id="undo" title="Rückgängig (Strg+Z)" aria-label="Rückgängig" disabled>↶</button>
+      <button class="btn quiet icon" type="button" id="redo" title="Wiederholen (Strg+Umschalt+Z)" aria-label="Wiederholen" disabled>↷</button>
       <button class="btn quiet" type="button" id="projnew" title="Alles zurücksetzen und leer anfangen">Neu</button>
       <button class="btn quiet" type="button" id="projload" title="Gespeicherte Projektdatei (.json) laden">Öffnen</button>
       <button class="btn quiet" type="button" id="projsave" title="Projekt als Datei sichern (.json)">Sichern</button>
@@ -32,14 +34,22 @@
     </div>
   </div>
 
-  <nav class="steps" role="tablist" aria-label="Arbeitsschritte">
-    <button class="step" type="button" role="tab" id="tab-icon" data-panel="icon" aria-controls="panel-icon" aria-selected="true"><span class="num">1</span>Icon<span class="state" id="st-icon"></span></button>
-    <button class="step" type="button" role="tab" id="tab-shots" data-panel="shots" aria-controls="panel-shots" aria-selected="false" tabindex="-1"><span class="num">2</span>Screenshots<span class="state" id="st-shots"></span></button>
-    <button class="step" type="button" role="tab" id="tab-feat" data-panel="feat" aria-controls="panel-feat" aria-selected="false" tabindex="-1"><span class="num">3</span>Feature Graphic<span class="state" id="st-feat"></span></button>
-    <button class="step" type="button" role="tab" id="tab-text" data-panel="text" aria-controls="panel-text" aria-selected="false" tabindex="-1"><span class="num">4</span>Texte<span class="state" id="st-text"></span></button>
-    <button class="step" type="button" role="tab" id="tab-sim" data-panel="sim" aria-controls="panel-sim" aria-selected="false" tabindex="-1"><span class="num">5</span>Vorschau</button>
-    <button class="step" type="button" role="tab" id="tab-export" data-panel="export" aria-controls="panel-export" aria-selected="false" tabindex="-1"><span class="num">6</span>Export<span class="state" id="st-export"></span></button>
-  </nav>
+  <div class="stepbar">
+    <nav class="steps" role="tablist" aria-label="Arbeitsschritte">
+      <button class="step" type="button" role="tab" id="tab-icon" data-panel="icon" aria-controls="panel-icon" aria-selected="true"><span class="num">1</span>Icon<span class="state" id="st-icon"></span></button>
+      <button class="step" type="button" role="tab" id="tab-shots" data-panel="shots" aria-controls="panel-shots" aria-selected="false" tabindex="-1"><span class="num">2</span>Screenshots<span class="state" id="st-shots"></span></button>
+      <button class="step" type="button" role="tab" id="tab-brief" data-panel="brief" aria-controls="panel-brief" aria-selected="false" tabindex="-1"><span class="num">3</span>Briefing<span class="state" id="st-brief"></span></button>
+      <button class="step" type="button" role="tab" id="tab-text" data-panel="text" aria-controls="panel-text" aria-selected="false" tabindex="-1"><span class="num">4</span>Texte<span class="state" id="st-text"></span></button>
+      <button class="step" type="button" role="tab" id="tab-feat" data-panel="feat" aria-controls="panel-feat" aria-selected="false" tabindex="-1"><span class="num">5</span>Feature Graphic<span class="state" id="st-feat"></span></button>
+      <button class="step" type="button" role="tab" id="tab-sim" data-panel="sim" aria-controls="panel-sim" aria-selected="false" tabindex="-1"><span class="num">6</span>Vorschau</button>
+      <button class="step" type="button" role="tab" id="tab-export" data-panel="export" aria-controls="panel-export" aria-selected="false" tabindex="-1"><span class="num">7</span>Export<span class="state" id="st-export"></span></button>
+    </nav>
+    <div class="langbar">
+      <label for="langswitch">Sprache</label>
+      <select id="langswitch" title="Texte und Captions dieser Sprache bearbeiten"></select>
+      <button class="btn quiet" type="button" id="langmanage">Sprachen …</button>
+    </div>
+  </div>
 </header>
 
 <main>
@@ -165,7 +175,7 @@
       <label class="check" for="pano">
         <input type="checkbox" id="pano">
         <span>Panorama über alle Frames
-          <small>Ein durchgehender Hintergrund, Caption immer oben. Frame 1 muss trotzdem allein funktionieren.</small>
+          <small>Ein durchgehender Hintergrund, Caption immer oben. Eigene Layouts einzelner Screenshots ruhen solange.</small>
         </span>
       </label>
       <label class="check" for="guides">
@@ -224,6 +234,16 @@
         <label for="headsize">Schriftgröße <output id="headsizeval" for="headsize"></output></label>
         <input type="range" id="headsize" min="36" max="110" value="64" data-unit="px">
       </div>
+      <div class="field">
+        <span class="legend">Schrift der Überschriften</span>
+        <label class="drop compact" id="fontdrop" for="fontfile">
+          <input class="vh" type="file" id="fontfile" accept=".woff2,.woff,.ttf,.otf,font/woff2,font/woff,font/ttf,font/otf">
+          <strong>Eigene Schrift laden</strong>
+          <span>WOFF2, TTF oder OTF · sonst Bricolage Grotesque</span>
+        </label>
+        <button class="linkbtn" type="button" id="fontclear" hidden>Zurück zur Standardschrift</button>
+        <p class="help">Gilt für Captions und den Titel der Feature Graphic.</p>
+      </div>
     </div>
 
     <div class="group actions">
@@ -234,9 +254,10 @@
       <summary>Tipps zu Screenshots</summary>
       <ul>
         <li>Frame 1 bis 3 entscheiden — sie erscheinen in den Suchergebnissen, bevor jemand wischt.</li>
-        <li>Caption als Nutzen formulieren: „Jedes Workout mitschreiben“ statt „Dashboard“.</li>
+        <li>Caption als Nutzen formulieren: „Jedes Workout mitschreiben“ statt „Dashboard“. Vorschläge liefert Schritt 3.</li>
         <li>Der größere Teil der Fläche sollte echte App-UI sein, nicht Deko.</li>
         <li>Mindestens 2 sind Pflicht, ab 4 im Hochformat für ein Featuring qualifiziert, maximal 8.</li>
+        <li>Reihenfolge per Ziehen am Griff ändern. Unter „Eigenes Layout“ bekommt ein einzelner Screenshot eine andere Anordnung oder Farbe.</li>
       </ul>
       <p>Screenshot direkt vom Gerät holen:</p>
       <code>adb exec-out screencap -p &gt; shot1.png</code>
@@ -255,14 +276,14 @@
   </div>
 </section>
 
-<!-- ============ 3 · FEATURE GRAPHIC ============ -->
+<!-- ============ 5 · FEATURE GRAPHIC ============ -->
 <section class="workspace panel" id="panel-feat" role="tabpanel" aria-labelledby="tab-feat" hidden>
   <div class="controls">
     <div class="group">
       <h2>Text</h2>
       <div class="field">
         <label for="ftitle">Titel</label>
-        <input type="text" id="ftitle" maxlength="40" placeholder="Leer lassen = App-Name aus „Texte“">
+        <input type="text" id="ftitle" maxlength="40" placeholder="Leer lassen = App-Name aus Schritt 4">
       </div>
       <div class="field">
         <label for="fsub">Untertitel</label>
@@ -333,41 +354,105 @@
   </div>
 </section>
 
+<!-- ============ 3 · BRIEFING ============ -->
+<section class="panel single" id="panel-brief" role="tabpanel" aria-labelledby="tab-brief" hidden>
+  <div class="cols">
+    <div class="card">
+      <h2>Über die App</h2>
+      <p class="lead">Je genauer das Briefing, desto besser passen Texte und Captions. Nichts davon wird hochgeladen.</p>
+      <div class="field">
+        <label for="bWhat">Was tut die App?</label>
+        <textarea id="bWhat" rows="3" placeholder="In zwei, drei Sätzen: welches Problem löst sie, und wie?"></textarea>
+      </div>
+      <div class="field">
+        <label for="bAudience">Für wen?</label>
+        <input type="text" id="bAudience" placeholder="z. B. Selbstständige, die ihre Zeiten abrechnen müssen" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="bFeatures">Kernfunktionen <span class="counter">eine pro Zeile</span></label>
+        <textarea id="bFeatures" rows="4" placeholder="Zeiten per Fingertipp erfassen&#10;Rechnung als PDF&#10;Funktioniert offline"></textarea>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="bTone">Tonalität</label>
+          <select id="bTone">
+            <option value="freundlich und klar">Freundlich und klar</option>
+            <option value="sachlich und professionell">Sachlich, professionell</option>
+            <option value="locker und persönlich">Locker, persönlich</option>
+            <option value="ruhig und hochwertig">Ruhig, hochwertig</option>
+            <option value="verspielt">Verspielt</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="bKeywords">Suchbegriffe</label>
+          <input type="text" id="bKeywords" placeholder="Zeiterfassung, Stundenzettel" autocomplete="off">
+        </div>
+      </div>
+      <div class="field">
+        <label for="bAvoid">Nicht erwähnen / Besonderheiten</label>
+        <input type="text" id="bAvoid" placeholder="z. B. keine Aussagen zu Steuerberatung, duzen" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="bNews">Was ist neu in dieser Version? <span class="counter">optional</span></label>
+        <textarea id="bNews" rows="2" placeholder="Stichworte reichen: Dunkelmodus, schnellere Suche"></textarea>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Was zeigen die Screenshots?</h2>
+      <p class="lead">Ein Stichwort pro Bild genügt — daraus entstehen die Captions.</p>
+      <ul class="notelist" id="notelist"></ul>
+    </div>
+
+    <div class="card">
+      <h2>Texte erzeugen</h2>
+      <p class="lead">Aus dem Briefing wird ein fertiger Auftrag für einen KI-Assistenten. Die Antwort füllt alle Felder — für jede Sprache im Projekt.</p>
+      <ol class="next">
+        <li><strong>Auftrag kopieren</strong>
+          <div><button class="btn primary" type="button" id="promptcopy">Auftrag kopieren</button></div>
+          <details class="inline"><summary>Auftrag ansehen</summary><pre class="tree" id="promptview"></pre></details>
+        </li>
+        <li><strong>In Claude einfügen und abschicken</strong>
+          <div><a class="linkbtn" href="https://claude.ai/new" target="_blank" rel="noopener noreferrer">claude.ai öffnen ↗</a> — jeder andere Assistent geht genauso.</div>
+        </li>
+        <li><strong>Antwort hier einfügen</strong>
+          <textarea id="aiResult" rows="5" placeholder="Die komplette Antwort einfügen" aria-label="Antwort des Assistenten" spellcheck="false"></textarea>
+          <button class="btn wide" type="button" id="aiApply">Vorschläge übernehmen</button>
+        </li>
+      </ol>
+      <p class="help">Ersetzt vorhandene Texte und Captions. Mit „Rückgängig“ ist der alte Stand sofort wieder da.</p>
+    </div>
+  </div>
+</section>
+
 <!-- ============ 4 · TEXTE ============ -->
 <section class="panel single" id="panel-text" role="tabpanel" aria-labelledby="tab-text" hidden>
   <div class="cols wide-first">
     <div class="card">
-      <h2>Store-Eintrag</h2>
-      <p class="lead">Die Zeichenzahlen sind harte Limits der Play Console.</p>
+      <h2>Store-Eintrag <span class="langtag" id="textlang"></span></h2>
+      <p class="lead">Die Zeichenzahlen sind harte Limits der Play Console. Die Sprache wechselst du oben rechts.</p>
+      <div class="importbar">
+        <span>Schon ein Eintrag vorhanden?</span>
+        <button class="linkbtn" type="button" id="importzip">ZIP importieren</button>
+        <button class="linkbtn" type="button" id="importdir">Fastlane-Ordner importieren</button>
+        <input class="vh" type="file" id="importzipfile" accept=".zip,application/zip" tabindex="-1" aria-hidden="true">
+        <input class="vh" type="file" id="importdirfile" webkitdirectory tabindex="-1" aria-hidden="true">
+      </div>
       <div class="row">
-        <div class="field">
-          <label for="mLocale">Sprache</label>
-          <select id="mLocale">
-            <option value="de-DE">Deutsch (de-DE)</option>
-            <option value="en-US">Englisch, USA (en-US)</option>
-            <option value="en-GB">Englisch, UK (en-GB)</option>
-            <option value="fr-FR">Französisch (fr-FR)</option>
-            <option value="es-ES">Spanisch (es-ES)</option>
-            <option value="it-IT">Italienisch (it-IT)</option>
-            <option value="nl-NL">Niederländisch (nl-NL)</option>
-            <option value="pl-PL">Polnisch (pl-PL)</option>
-            <option value="pt-BR">Portugiesisch, Brasilien (pt-BR)</option>
-            <option value="tr-TR">Türkisch (tr-TR)</option>
-          </select>
-        </div>
         <div class="field">
           <label for="mPackage">Paketname</label>
           <input type="text" id="mPackage" value="com.example.app" spellcheck="false" autocapitalize="off" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="mDev">Entwicklername <span class="counter">nur Vorschau</span></label>
+          <input type="text" id="mDev" placeholder="Wie im Entwicklerkonto" autocomplete="off">
         </div>
       </div>
       <p class="fielderror" id="pkgerror" hidden>Ein Paketname besteht aus mindestens zwei Teilen mit Punkt, z. B. <code>de.firma.app</code>.</p>
       <div class="field">
         <label for="mTitle">App-Name <span class="counter" id="cTitle"></span></label>
         <input type="text" id="mTitle" placeholder="Kurz und eindeutig" autocomplete="off">
-      </div>
-      <div class="field">
-        <label for="mDev">Entwicklername <span class="counter">nur für die Vorschau</span></label>
-        <input type="text" id="mDev" placeholder="Wie im Entwicklerkonto" autocomplete="off">
+        <div class="alts" id="titlealts"></div>
       </div>
       <div class="field">
         <label for="mShort">Kurzbeschreibung <span class="counter" id="cShort"></span></label>
@@ -419,7 +504,7 @@
   </div>
 </section>
 
-<!-- ============ 5 · VORSCHAU ============ -->
+<!-- ============ 6 · VORSCHAU ============ -->
 <section class="panel single stagebg" id="panel-sim" role="tabpanel" aria-labelledby="tab-sim" hidden>
   <div class="phone">
     <div class="phonetop">
@@ -441,7 +526,7 @@
   <p class="simnote">Genau dieser Ausschnitt entscheidet. Wenn Icon und erster Screenshot hier nicht zusammen funktionieren, hilft kein Text weiter unten.</p>
 </section>
 
-<!-- ============ 6 · EXPORT ============ -->
+<!-- ============ 7 · EXPORT ============ -->
 <section class="panel single" id="panel-export" role="tabpanel" aria-labelledby="tab-export" hidden>
   <div class="cols">
     <div class="card">
@@ -476,6 +561,24 @@
 </section>
 
 </main>
+
+<dialog class="dialog" id="langdialog" aria-labelledby="langdialogtitle">
+  <h2 id="langdialogtitle">Sprachen im Projekt</h2>
+  <p class="lead">Jede Sprache hat eigene Store-Texte, Captions und einen eigenen Ordner im Export. Bilder und Farben gelten für alle.</p>
+  <ul class="langlist" id="langlist"></ul>
+  <div class="field">
+    <label for="langadd">Sprache hinzufügen</label>
+    <div class="row">
+      <select id="langadd"></select>
+      <button class="btn" type="button" id="langaddbtn">Hinzufügen</button>
+    </div>
+  </div>
+  <label class="check" for="langcopy">
+    <input type="checkbox" id="langcopy" checked>
+    <span>Texte der aktuellen Sprache als Vorlage kopieren<small>Zum Übersetzen. Die Checkliste meldet, solange sie noch gleich sind.</small></span>
+  </label>
+  <div class="dialogactions"><button class="btn primary" type="button" id="langclose">Fertig</button></div>
+</dialog>
 
 <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
 

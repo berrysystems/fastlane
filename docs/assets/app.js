@@ -18,20 +18,39 @@
   const MAX_SHOTS = 8;
   const LIMITS = { mTitle: 30, mShort: 80, mFull: 4000, mWhats: 500 };
   const DARK_TEXT = "#131A24";
-  const PROJECT_VERSION = 3;
+  const PROJECT_VERSION = 4;
+  const DEFAULT_LOCALE = "de-DE";
+  const HISTORY_LIMIT = 60;
 
-  // Alles, was in Projektdatei und Autosave landet. Zugleich die Whitelist
+  // Sprachcodes, wie die Play Console sie führt.
+  const LOCALE_NAMES = {
+    "de-DE": "Deutsch", "en-US": "Englisch (USA)", "en-GB": "Englisch (UK)", "fr-FR": "Französisch",
+    "es-ES": "Spanisch", "it-IT": "Italienisch", "nl-NL": "Niederländisch", "pl-PL": "Polnisch",
+    "pt-BR": "Portugiesisch (Brasilien)", "pt-PT": "Portugiesisch (Portugal)", "tr-TR": "Türkisch",
+    "sv-SE": "Schwedisch", "da-DK": "Dänisch", "no-NO": "Norwegisch", "fi-FI": "Finnisch",
+    "cs-CZ": "Tschechisch", "hu-HU": "Ungarisch", "el-GR": "Griechisch", "ru-RU": "Russisch",
+    "uk": "Ukrainisch", "ja-JP": "Japanisch", "ko-KR": "Koreanisch", "zh-CN": "Chinesisch (vereinfacht)",
+  };
+  const LOCALE_RE = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
+  const localeName = (code) => LOCALE_NAMES[code] || code;
+
+  // Einstellungen, die für das ganze Projekt gelten. Zugleich die Whitelist
   // beim Laden — eine fremde Datei darf keine beliebigen Elemente beschreiben.
   const SETTINGS = [
     "layout", "preset", "pano", "guides", "bg1", "bg2", "textcolor", "frame", "scale",
     "statusbar", "croptop", "headsize",
-    "ftitle", "fsub", "falign", "fusericon", "fdevice", "fbg1", "fbg2", "ftextcolor",
+    "falign", "fusericon", "fdevice", "fbg1", "fbg2", "ftextcolor",
     "ibg1", "ibg2", "izoom", "imono",
-    "mLocale", "mPackage", "mDev", "mTitle", "mShort", "mFull", "mWhats",
+    "mPackage", "mDev",
+    "bWhat", "bAudience", "bFeatures", "bTone", "bKeywords", "bAvoid", "bNews",
   ];
+  // Felder, die es je Sprache gibt. Die Eingabefelder zeigen immer die aktive
+  // Sprache; state.texts hält alle.
+  const LOCALE_FIELDS = ["mTitle", "mShort", "mFull", "mWhats", "ftitle", "fsub"];
   const REPAINT_SHOTS = new Set(["layout", "bg1", "bg2", "textcolor", "frame", "scale", "statusbar", "croptop", "headsize"]);
   const REBUILD_PLATES = new Set(["pano", "guides", "preset"]);
 
+  const BRAND_FONT = "ListingBrand";
   const FONT_HEAD = "'Bricolage Grotesque','DM Sans',sans-serif";
   const FONT_BODY = "'DM Sans',sans-serif";
 
@@ -39,13 +58,24 @@
    * Zustand und kleine Helfer
    * ================================================================== */
 
-  // Ein Asset ist { blob, img, url }. Der Blob ist die unveränderte
+  // Ein Asset ist { id, blob, img, url }. Der Blob ist die unveränderte
   // Originaldatei — gespeichert wird immer sie, nie eine Neukodierung.
-  const state = { shots: [], iconLogo: null, featLogo: null };
+  // Ein Screenshot ist ein Asset plus { captions: {sprache: {headline, sub}},
+  // note, layout, bg, canvas }.
+  const emptyTexts = () => ({ ...Object.fromEntries(LOCALE_FIELDS.map((id) => [id, ""])), alts: [] });
+  const state = {
+    shots: [], iconLogo: null, featLogo: null, font: null,
+    locale: DEFAULT_LOCALE, locales: [DEFAULT_LOCALE], texts: { [DEFAULT_LOCALE]: emptyTexts() },
+  };
   let nextId = 1;
 
   const $ = (id) => document.getElementById(id);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+  const clone = (value) => JSON.parse(JSON.stringify(value));
+
+  function caption(shot, locale = state.locale) {
+    return shot.captions[locale] || (shot.captions[locale] = { headline: "", sub: "" });
+  }
 
   function el(tag, props = {}, ...kids) {
     const node = document.createElement(tag);
@@ -85,6 +115,99 @@
     finally { button.disabled = false; }
   }
 
+  async function copyText(text, fallbackNode) {
+    try { await navigator.clipboard.writeText(text); return true; }
+    catch (_) {
+      // Ohne Clipboard-API (z. B. file:// in manchen Browsern): markieren und kopieren.
+      const range = document.createRange();
+      range.selectNodeContents(fallbackNode);
+      const selection = getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      try { return document.execCommand("copy"); } catch (_e) { return false; }
+    }
+  }
+
+  /* ================================================================== *
+   * Sprachen
+   * ================================================================== */
+
+  // Eingabefelder → state. Vor jedem Lesen von state.texts aufrufen.
+  function commitLocale() {
+    const texts = state.texts[state.locale] || (state.texts[state.locale] = emptyTexts());
+    LOCALE_FIELDS.forEach((id) => { texts[id] = $(id).value; });
+  }
+  // state → Eingabefelder.
+  function showLocale() {
+    const texts = state.texts[state.locale];
+    LOCALE_FIELDS.forEach((id) => { $(id).value = texts[id] || ""; });
+  }
+  // Wechselt die Sprache nur in Daten und Canvases — für den Export, der
+  // nacheinander jede Sprache rendert.
+  function viewLocale(locale) {
+    commitLocale();
+    state.locale = locale;
+    showLocale();
+    state.shots.forEach((shot, i) => { if (shot.canvas) drawShot(shot.canvas, i); });
+    drawFeature();
+  }
+  function switchLocale(locale) {
+    if (locale === state.locale || !state.texts[locale]) return;
+    viewLocale(locale);
+    renderList();
+    renderSearchSim();
+    renderLocaleUi();
+    refresh();
+    markDirty();
+  }
+  function ensureLocale(locale) {
+    if (state.texts[locale]) return;
+    state.texts[locale] = emptyTexts();
+    state.locales.push(locale);
+  }
+  function addLocale(locale, copy) {
+    if (!LOCALE_RE.test(locale) || state.texts[locale]) return;
+    checkpoint();
+    const from = state.locale;
+    ensureLocale(locale);
+    if (copy) {
+      state.texts[locale] = clone(state.texts[from]);
+      state.shots.forEach((shot) => { shot.captions[locale] = { ...caption(shot, from) }; });
+    }
+    switchLocale(locale);
+    toast(copy
+      ? `${localeName(locale)} angelegt — Texte aus ${from} als Vorlage kopiert.`
+      : `${localeName(locale)} angelegt.`);
+  }
+  function removeLocale(locale) {
+    if (state.locales.length < 2) return;
+    if (!confirm(`${localeName(locale)} (${locale}) mit allen Texten und Captions aus dem Projekt entfernen?`)) return;
+    checkpoint();
+    if (locale === state.locale) switchLocale(state.locales.find((l) => l !== locale));
+    state.locales = state.locales.filter((l) => l !== locale);
+    delete state.texts[locale];
+    state.shots.forEach((shot) => { delete shot.captions[locale]; });
+    renderLocaleUi();
+    touch();
+  }
+
+  function renderLocaleUi() {
+    const option = (code) => el("option", { value: code, text: `${localeName(code)} · ${code}` });
+    $("langswitch").replaceChildren(...state.locales.map(option));
+    $("langswitch").value = state.locale;
+    $("textlang").textContent = state.locale;
+
+    $("langlist").replaceChildren(...state.locales.map((code) => el("li", {},
+      el("span", {}, el("b", { text: localeName(code) }), " ", el("code", { text: code })),
+      state.locales.length > 1
+        ? el("button", { class: "linkbtn", type: "button", text: "Entfernen", "aria-label": `${localeName(code)} entfernen`, onclick: () => removeLocale(code) })
+        : el("small", { text: "einzige Sprache" })
+    )));
+    const free = Object.keys(LOCALE_NAMES).filter((code) => !state.texts[code]);
+    $("langadd").replaceChildren(...free.map(option));
+    $("langaddbtn").disabled = !free.length;
+  }
+
   /* ================================================================== *
    * Navigation
    * ================================================================== */
@@ -103,7 +226,7 @@
     $$(".panel").forEach((p) => { p.hidden = p.id !== "panel-" + activePanel; });
     if (focus) tab.focus();
     tab.scrollIntoView({ block: "nearest", inline: "nearest" });
-    try { history.replaceState(null, "", "#" + activePanel); } catch (_) { /* file:// in manchen Browsern */ }
+    try { window.history.replaceState(null, "", "#" + activePanel); } catch (_) { /* file:// in manchen Browsern */ }
     window.scrollTo(0, 0);
     refresh();
   }
@@ -137,13 +260,12 @@
       const img = new Image();
       img.onload = () => {
         if (!img.width || !img.height) { URL.revokeObjectURL(url); reject(new Error("Bild ohne Abmessungen")); return; }
-        resolve({ blob, img, url });
+        resolve({ id: nextId++, blob, img, url });
       };
       img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Bild nicht lesbar")); };
       img.src = url;
     });
   }
-  function releaseAsset(asset) { if (asset && asset.url) URL.revokeObjectURL(asset.url); }
 
   function blobToDataUrl(blob) {
     return new Promise((resolve, reject) => {
@@ -153,9 +275,12 @@
       reader.readAsDataURL(blob);
     });
   }
-  function dataUrlToBlob(url) {
-    const m = /^data:(image\/[a-z0-9.+-]+);base64,([a-z0-9+/=\s]+)$/i.exec(String(url || ""));
-    if (!m) throw new Error("Kein eingebettetes Bild");
+  // kind "image" für Bilder, "font" für Schriftdateien (deren Typ je nach
+  // Browser auch application/… lautet).
+  function dataUrlToBlob(url, kind = "image") {
+    const types = kind === "font" ? "font|application" : "image";
+    const m = new RegExp(`^data:((?:${types})\\/[a-z0-9.+-]+);base64,([a-z0-9+/=\\s]+)$`, "i").exec(String(url || ""));
+    if (!m) throw new Error("Eingebettete Datei nicht lesbar");
     const bin = atob(m[2]);
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
@@ -492,14 +617,21 @@
   const shotDir = () => $("preset").selectedOptions[0].dataset.dir || "phoneScreenshots";
   const shotName = (i) => `screenshot-${String(i + 1).padStart(2, "0")}.jpg`;
   const isPano = () => $("pano").checked && state.shots.length > 1;
+  const headFont = () => (state.font ? `'${BRAND_FONT}',${FONT_HEAD}` : FONT_HEAD);
+  const readableOn = (bg) => (contrastRatio("#FFFFFF", bg) >= contrastRatio(DARK_TEXT, bg) ? "#FFFFFF" : DARK_TEXT);
 
   function drawShot(canvas, i) {
     const shot = state.shots[i];
     if (!shot) return;
     const { w: W, h: H } = currentSize();
     const u = W / 1080, n = state.shots.length, pano = isPano();
-    const bg1 = $("bg1").value, bg2 = $("bg2").value, textColor = $("textcolor").value;
+    // Im Panorama teilen sich alle Frames einen Hintergrund — eigene
+    // Einstellungen einzelner Screenshots ruhen dort.
+    const own = !pano && shot.bg;
+    const bg1 = own ? shot.bg[0] : $("bg1").value, bg2 = own ? shot.bg[1] : $("bg2").value;
+    const textColor = own ? readableOn(mix(bg1, bg2, 0.5)) : $("textcolor").value;
     const frameStyle = $("frame").value, scale = parseInt($("scale").value, 10) / 100;
+    const text = caption(shot);
     if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
     const ctx = canvas.getContext("2d");
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -523,7 +655,7 @@
     }
 
     const headPx = parseInt($("headsize").value, 10) * u, subPx = headPx * 0.44, margin = 92 * u;
-    const layout = pano ? "caption-top" : $("layout").value;
+    const layout = pano ? "caption-top" : (shot.layout || $("layout").value);
     const alignLeft = layout === "angled";
     const capTop = 118 * u;
 
@@ -533,15 +665,15 @@
       ctx.textBaseline = "top";
       const maxW = W - margin * 2, x = alignLeft ? margin : W / 2;
       let y = baseY;
-      ctx.font = `700 ${headPx}px ${FONT_HEAD}`;
-      const lines = wrapLines(ctx, shot.headline, maxW), lineH = headPx * 1.16;
+      ctx.font = `700 ${headPx}px ${headFont()}`;
+      const lines = wrapLines(ctx, text.headline, maxW), lineH = headPx * 1.16;
       lines.forEach((line, k) => ctx.fillText(line, x, y + k * lineH));
       y += lines.length * lineH;
-      if (shot.sub) {
+      if (text.sub.trim()) {
         ctx.globalAlpha = 0.78;
         ctx.font = `400 ${subPx}px ${FONT_BODY}`;
         if (lines.length) y += subPx * 0.42;
-        const subLines = wrapLines(ctx, shot.sub, maxW * 0.92);
+        const subLines = wrapLines(ctx, text.sub, maxW * 0.92);
         subLines.forEach((line, k) => ctx.fillText(line, x, y + k * subPx * 1.3));
         y += subLines.length * subPx * 1.3;
         ctx.globalAlpha = 1;
@@ -549,7 +681,7 @@
       return y - baseY;
     }
 
-    const hasCaption = !!(shot.headline.trim() || shot.sub.trim());
+    const hasCaption = !!(text.headline.trim() || text.sub.trim());
     const capH = hasCaption && layout !== "caption-bottom" ? paintCaption(capTop) : 0;
     const top = capTop + capH + (hasCaption ? 78 * u : 0);
     const framed = layout !== "bare";
@@ -579,49 +711,126 @@
     }
   }
 
+  // Aufklappbare Abweichungen für einen einzelnen Screenshot.
+  function shotOptions(shot, no) {
+    const summary = el("summary");
+    const label = () => { summary.textContent = "Eigenes Layout" + (shot.layout || shot.bg ? " · aktiv" : ""); };
+    const layout = el("select", {
+      "aria-label": `Anordnung nur für Screenshot ${no}`,
+      onchange: (e) => { shot.layout = e.target.value; label(); },
+    },
+      el("option", { value: "", text: "Anordnung wie alle" }),
+      Array.from($("layout").options).map((o) => el("option", { value: o.value, text: o.textContent })));
+    layout.value = shot.layout;
+    const start = shot.bg || [$("bg1").value, $("bg2").value];
+    const pick = (k) => el("input", {
+      type: "color", value: start[k], "aria-label": `Eigene Hintergrundfarbe ${k + 1} für Screenshot ${no}`,
+      oninput: (e) => { if (shot.bg) shot.bg[k] = e.target.value; },
+    });
+    const c1 = pick(0), c2 = pick(1);
+    const colours = el("div", { class: "row", hidden: !shot.bg }, c1, c2);
+    const own = el("input", {
+      type: "checkbox", checked: !!shot.bg,
+      onchange: (e) => { shot.bg = e.target.checked ? [c1.value, c2.value] : null; colours.hidden = !shot.bg; label(); },
+    });
+    label();
+    return el("details", { class: "shotopts", open: !!shot.open, ontoggle: (e) => { shot.open = e.target.open; } },
+      summary, layout, el("label", { class: "check" }, own, el("span", { text: "Eigener Hintergrund" })), colours);
+  }
+
   function renderList() {
     const list = $("shotlist");
     list.replaceChildren();
     state.shots.forEach((shot, i) => {
-      const no = i + 1;
+      const no = i + 1, text = caption(shot);
       const tool = (label, title, onclick, cls = "") => el("button", {
         class: "iconbtn " + cls, type: "button", text: label, title,
         "aria-label": `${title} — Screenshot ${no}`, onclick,
       });
-      list.append(el("li", { class: "shotrow" },
-        el("img", { src: shot.url, alt: "" }),
+      list.append(el("li", { class: "shotrow", "data-index": String(i) },
+        el("span", { class: "handle", draggable: true, title: "Ziehen, um die Reihenfolge zu ändern", "aria-hidden": "true", text: "⠿" }),
+        el("img", { src: shot.url, alt: "", draggable: false }),
         el("div", { class: "grow" },
           el("span", { class: "idx" }, String(no).padStart(2, "0"), i < 3 ? el("b", { text: " · in der Suche sichtbar" }) : null),
           el("input", {
-            type: "text", value: shot.headline, placeholder: "Caption — der Nutzen, nicht der Screenname",
+            type: "text", value: text.headline, placeholder: "Caption — der Nutzen, nicht der Screenname",
             "aria-label": `Caption für Screenshot ${no}`,
-            oninput: (e) => { shot.headline = e.target.value; },
+            oninput: (e) => { caption(shot).headline = e.target.value; },
           }),
           el("input", {
-            type: "text", class: "sub", value: shot.sub, placeholder: "Zweite Zeile (optional)",
+            type: "text", class: "sub", value: text.sub, placeholder: "Zweite Zeile (optional)",
             "aria-label": `Unterzeile für Screenshot ${no}`,
-            oninput: (e) => { shot.sub = e.target.value; },
-          })
+            oninput: (e) => { caption(shot).sub = e.target.value; },
+          }),
+          shotOptions(shot, no)
         ),
         el("div", { class: "rowtools" },
-          i > 0 ? tool("↑", "Nach vorn", () => moveShot(i, -1)) : null,
-          i < state.shots.length - 1 ? tool("↓", "Nach hinten", () => moveShot(i, 1)) : null,
+          i > 0 ? tool("↑", "Nach vorn", () => moveShot(i, i - 1)) : null,
+          i < state.shots.length - 1 ? tool("↓", "Nach hinten", () => moveShot(i, i + 1)) : null,
           tool("×", "Entfernen", () => removeShot(i), "del")
         )
       ));
     });
+    renderNotes();
   }
-  function moveShot(i, d) {
-    const s = state.shots;
-    [s[i], s[i + d]] = [s[i + d], s[i]];
+  function moveShot(from, to) {
+    if (from === to || to < 0 || to >= state.shots.length) return;
+    checkpoint();
+    state.shots.splice(to, 0, state.shots.splice(from, 1)[0]);
     renderList();
     touch({ plates: true });
   }
+  // Die Bilddatei bleibt im Speicher, solange „Rückgängig“ sie zurückholen kann.
   function removeShot(i) {
-    releaseAsset(state.shots.splice(i, 1)[0]);
+    checkpoint();
+    state.shots.splice(i, 1);
     renderList();
     touch({ plates: true });
   }
+
+  // Sortieren per Ziehen am Griff. Die Pfeile bleiben für die Tastatur.
+  (function wireShotDrag() {
+    const list = $("shotlist");
+    let from = -1;
+    const clear = () => $$(".shotrow", list).forEach((row) => row.classList.remove("dragging", "dropbefore", "dropafter"));
+    const target = (e) => {
+      const row = e.target instanceof Element ? e.target.closest(".shotrow") : null;
+      if (!row) return null;
+      const box = row.getBoundingClientRect();
+      return { row, index: Number(row.dataset.index), after: e.clientY > box.top + box.height / 2 };
+    };
+    list.addEventListener("dragstart", (e) => {
+      const handle = e.target instanceof Element ? e.target.closest(".handle") : null;
+      if (!handle) return;
+      const row = handle.closest(".shotrow");
+      from = Number(row.dataset.index);
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", shotName(from));
+      e.dataTransfer.setDragImage(row, 16, 16);
+      requestAnimationFrame(() => row.classList.add("dragging"));
+    });
+    list.addEventListener("dragover", (e) => {
+      if (from < 0) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      const t = target(e);
+      $$(".shotrow", list).forEach((row) => row.classList.remove("dropbefore", "dropafter"));
+      if (t && t.index !== from) t.row.classList.add(t.after ? "dropafter" : "dropbefore");
+    });
+    list.addEventListener("drop", (e) => {
+      if (from < 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const t = target(e), source = from;
+      from = -1;
+      clear();
+      if (!t) return;
+      let to = t.index + (t.after ? 1 : 0);
+      if (source < to) to--;
+      moveShot(source, to);
+    });
+    list.addEventListener("dragend", () => { from = -1; clear(); });
+  })();
 
   function renderPlates() {
     const sheet = $("sheet"), n = state.shots.length, pano = isPano();
@@ -671,6 +880,9 @@
     $("simshots").replaceChildren(...state.shots.slice(0, 3).filter((s) => s.canvas).map((s) => scaledCopy(s.canvas, 96)));
   }
 
+  function newShot(asset, extra = {}) {
+    return { ...asset, captions: {}, note: "", layout: "", bg: null, canvas: null, ...extra };
+  }
   async function addShots(files) {
     let images = files.filter(isRaster);
     if (!images.length) { toast("Bitte PNG-, JPG- oder WebP-Dateien wählen.", "error"); return; }
@@ -685,7 +897,8 @@
     const loaded = results.filter((r) => r.status === "fulfilled").map((r) => r.value);
     if (loaded.length < results.length) toast("Mindestens eine Datei ließ sich nicht als Bild lesen.", "error");
     if (!loaded.length) return;
-    loaded.forEach((asset) => state.shots.push({ ...asset, id: nextId++, headline: "", sub: "", canvas: null }));
+    checkpoint();
+    loaded.forEach((asset) => state.shots.push(newShot(asset)));
     renderList();
     touch({ plates: true });
   }
@@ -703,7 +916,28 @@
     }
     const zip = new window.JSZip();
     await Promise.all(state.shots.map(async (shot, i) => zip.file(shotName(i), await toBlob(shot.canvas, "image/jpeg"))));
-    saveBlob(await zip.generateAsync({ type: "blob" }), "screenshots.zip");
+    saveBlob(await zip.generateAsync({ type: "blob" }), `screenshots-${state.locale}.zip`);
+  }
+
+  // Eigene Schrift für Überschriften. Als „100 900“ angemeldet, damit der
+  // Browser bei einer Datei mit nur einem Schnitt kein falsches Fett erzeugt.
+  let activeFace = null;
+  async function loadFont(blob, name) {
+    const face = new FontFace(BRAND_FONT, await blob.arrayBuffer(), { weight: "100 900" });
+    await face.load();
+    return { id: nextId++, blob, name: String(name || "Eigene Schrift"), face };
+  }
+  function activateFont(font) {
+    if (activeFace) document.fonts.delete(activeFace);
+    activeFace = font ? font.face : null;
+    if (activeFace) document.fonts.add(activeFace);
+  }
+  async function setFont(file) {
+    try {
+      state.font = await loadFont(new Blob([file], { type: file.type || "application/octet-stream" }), file.name);
+      activateFont(state.font);
+      touch({ shots: true });
+    } catch (_) { toast("Die Schriftdatei ließ sich nicht lesen. Nimm WOFF2, TTF oder OTF.", "error"); }
   }
 
   /* ================================================================== *
@@ -735,7 +969,7 @@
     }
     ctx.textBaseline = "top";
     ctx.fillStyle = $("ftextcolor").value;
-    const titleFont = (px) => `800 ${px}px ${FONT_HEAD}`, subFont = `400 26px ${FONT_BODY}`;
+    const titleFont = (px) => `800 ${px}px ${headFont()}`, subFont = `400 26px ${FONT_BODY}`;
 
     if ($("falign").value === "center" && !showDevice) {
       const maxW = W - safe * 2;
@@ -883,7 +1117,7 @@
     if (!file || !isLogo(file)) { toast("Bitte eine PNG-, SVG-, JPG- oder WebP-Datei wählen.", "error"); return; }
     try {
       const asset = await loadAsset(file);
-      releaseAsset(state[slot]);
+      checkpoint();
       state[slot] = asset;
       if (slot === "iconLogo") renderPalettes();
       touch();
@@ -995,6 +1229,12 @@
     setPreviewText($("pvFull"), $("mFull").value.trim(), "Die ersten drei Zeilen deiner Beschreibung.");
     drawMasked($("pvIcon"), 112, "round");
     $("pkgerror").hidden = PACKAGE_RE.test($("mPackage").value.trim());
+    // Weitere Namensvorschläge aus dem Briefing, per Klick übernehmbar.
+    const alts = (state.texts[state.locale].alts || []).filter((alt) => alt !== $("mTitle").value.trim());
+    $("titlealts").replaceChildren(...(alts.length ? [el("span", { text: "Alternativen:" }), ...alts.map((alt) => el("button", {
+      class: "altchip", type: "button", text: alt, title: "Als App-Namen übernehmen",
+      onclick: () => { $("mTitle").value = alt; touch(); },
+    }))] : []));
     lint();
   }
 
@@ -1032,30 +1272,238 @@
   }
 
   /* ================================================================== *
+   * Briefing und Textvorschläge
+   *
+   * Ohne Server: Das Briefing wird zu einem Auftrag, den man in einen
+   * KI-Assistenten einfügt. Dessen JSON-Antwort füllt die Felder. So braucht
+   * die Seite weder API-Schlüssel noch Zugangsschutz.
+   * ================================================================== */
+
+  function renderNotes() {
+    const host = $("notelist");
+    if (!state.shots.length) {
+      host.replaceChildren(el("li", { class: "hint", text: "Noch keine Screenshots. Lade sie in Schritt 2 — dann kannst du hier beschreiben, was jeder zeigt." }));
+      return;
+    }
+    host.replaceChildren(...state.shots.map((shot, i) => el("li", { class: "noterow" },
+      el("img", { src: shot.url, alt: "" }),
+      el("input", {
+        type: "text", value: shot.note, placeholder: `Was zeigt Screenshot ${i + 1}?`,
+        "aria-label": `Inhalt von Screenshot ${i + 1}`,
+        oninput: (e) => { shot.note = e.target.value; },
+      })
+    )));
+  }
+
+  function buildPrompt() {
+    commitLocale();
+    const value = (id) => $(id).value.trim();
+    const bullets = (text) => text.split(/\n+/).map((l) => l.replace(/^[-•*]\s*/, "").trim()).filter(Boolean).map((l) => "- " + l).join("\n");
+    const out = [];
+    const section = (title, body) => { if (body) out.push(`## ${title}\n${body}`); };
+
+    out.push(
+      "Du schreibst den Google-Play-Store-Eintrag für eine Android-App. " +
+      "Arbeite ausschließlich mit den Angaben unten. Erfinde keine Funktionen, Zahlen, Auszeichnungen oder Nutzerstimmen.");
+    section("Die App", [
+      value("bWhat") || "(keine Beschreibung angegeben — halte die Texte entsprechend allgemein)",
+      value("bAudience") && "Zielgruppe: " + value("bAudience"),
+      value("bTone") && "Tonalität: " + value("bTone"),
+      value("bKeywords") && "Wichtige Suchbegriffe (natürlich einbauen, nicht stapeln): " + value("bKeywords"),
+      value("bAvoid") && "Nicht erwähnen / Besonderheiten: " + value("bAvoid"),
+    ].filter(Boolean).join("\n"));
+    section("Kernfunktionen", bullets(value("bFeatures")));
+    section("Neu in dieser Version", bullets(value("bNews")));
+
+    state.locales.forEach((locale) => {
+      const t = state.texts[locale];
+      if (![t.mTitle, t.mShort, t.mFull].some((v) => v.trim())) return;
+      section(`Bisheriger Eintrag ${locale} (verbessern, Bewährtes behalten)`, [
+        t.mTitle.trim() && "App-Name: " + t.mTitle.trim(),
+        t.mShort.trim() && "Kurzbeschreibung: " + t.mShort.trim(),
+        t.mFull.trim() && "Beschreibung:\n" + t.mFull.trim(),
+      ].filter(Boolean).join("\n"));
+    });
+
+    section("Screenshots in dieser Reihenfolge", state.shots.length
+      ? state.shots.map((shot, i) => `${i + 1}. ${shot.note.trim() || "(keine Angabe — neutral zum Nutzen der App formulieren)"}`).join("\n")
+      : "Es gibt noch keine Screenshots. Gib für captions ein leeres Array zurück.");
+
+    section("Sprachen", state.locales.map((l) => `- ${l} (${localeName(l)})`).join("\n") +
+      "\nSchreibe jede Sprache eigenständig und idiomatisch, nicht als wörtliche Übersetzung.");
+
+    section("Regeln",
+      `- title: höchstens ${LIMITS.mTitle} Zeichen. Der Markenname bleibt in allen Sprachen gleich. Kein Emoji, keine Versalien, kein „beste“, „Nr. 1“, „kostenlos“.\n` +
+      `- titleAlternatives: zwei bis drei weitere Vorschläge mit denselben Grenzen.\n` +
+      `- shortDescription: höchstens ${LIMITS.mShort} Zeichen, ein Satz zum Nutzen, endet mit Punkt. Keine Preis- oder Werbeaussagen.\n` +
+      `- fullDescription: höchstens ${LIMITS.mFull} Zeichen, sinnvoll sind 800 bis 1800. Die ersten 160 Zeichen tragen das Versprechen. ` +
+      "Danach kurze Abschnitte mit einer Überschrift in Versalien und Aufzählungen mit „•“: Funktionen, für wen, Daten und Berechtigungen (nur wenn im Briefing genannt). Kein Markdown.\n" +
+      `- whatsNew: höchstens ${LIMITS.mWhats} Zeichen. Leerer String, wenn oben nichts unter „Neu in dieser Version“ steht.\n` +
+      "- featureSubtitle: höchstens 60 Zeichen, eine Zeile für die Feature Graphic.\n" +
+      "- captions: genau ein Eintrag pro Screenshot, in derselben Reihenfolge. headline höchstens 28 Zeichen und als Nutzen formuliert, sub höchstens 45 Zeichen oder leer.\n" +
+      "- Keine Superlative, keine Vergleiche mit anderen Apps, keine Aufforderung zum Herunterladen, keine wiederholten Keywords.");
+
+    section("Antwortformat",
+      "Antworte nur mit einem JSON-Objekt, ohne Erklärung davor oder danach. Ein Schlüssel pro Sprache:\n" +
+      JSON.stringify({ listings: { [state.locales[0]]: {
+        title: "", titleAlternatives: ["", ""], shortDescription: "", fullDescription: "", whatsNew: "", featureSubtitle: "",
+        captions: state.shots.length ? [{ headline: "", sub: "" }] : [],
+      } } }, null, 2));
+    return out.join("\n\n");
+  }
+
+  // Sucht das JSON-Objekt auch dann, wenn die Antwort in einem Codeblock
+  // steckt oder ein Satz davorsteht.
+  function parseSuggestions(raw) {
+    const text = String(raw || "");
+    const start = text.indexOf("{"), end = text.lastIndexOf("}");
+    if (start < 0 || end <= start) throw new Error("In der Antwort steckt kein JSON-Objekt.");
+    let data;
+    try { data = JSON.parse(text.slice(start, end + 1)); }
+    catch (_) { throw new Error("Das JSON ist unvollständig oder beschädigt. Bitte die komplette Antwort einfügen."); }
+    const listings = data && typeof data.listings === "object" && data.listings ? data.listings : data;
+    const entries = Object.entries(listings || {}).filter(([code, v]) => LOCALE_RE.test(code) && v && typeof v === "object");
+    if (!entries.length) throw new Error("Keine Sprache im erwarteten Format gefunden (z. B. „de-DE“).");
+    return entries;
+  }
+  function applySuggestions(raw) {
+    const entries = parseSuggestions(raw);
+    checkpoint();
+    const str = (v) => (typeof v === "string" ? v.trim() : "");
+    const MAP = { title: "mTitle", shortDescription: "mShort", fullDescription: "mFull", whatsNew: "mWhats", featureSubtitle: "fsub" };
+    entries.forEach(([locale, listing]) => {
+      ensureLocale(locale);
+      const texts = state.texts[locale];
+      Object.entries(MAP).forEach(([key, id]) => { if (str(listing[key])) texts[id] = str(listing[key]); });
+      texts.alts = (Array.isArray(listing.titleAlternatives) ? listing.titleAlternatives : [])
+        .map(str).filter((alt) => alt && alt !== texts.mTitle).slice(0, 5);
+      (Array.isArray(listing.captions) ? listing.captions : []).slice(0, state.shots.length).forEach((c, i) => {
+        if (!c || typeof c !== "object") return;
+        state.shots[i].captions[locale] = { headline: str(c.headline), sub: str(c.sub) };
+      });
+    });
+    showLocale();
+    renderLocaleUi();
+    renderList();
+    touch({ shots: true });
+    $("aiResult").value = "";
+    toast(`Vorschläge für ${entries.map(([code]) => code).join(", ")} übernommen. Bitte gegenlesen.`);
+    activate("text");
+  }
+
+  /* ================================================================== *
+   * Vorhandenen Eintrag importieren
+   *
+   * Liest die Fastlane-Struktur — aus einem ZIP dieser Werkbank, aus einem
+   * gezippten oder direkt gewählten Ordner, oder aus `publish.js --pull`.
+   * ================================================================== */
+
+  const LISTING_FILES = { "title.txt": "mTitle", "short_description.txt": "mShort", "full_description.txt": "mFull" };
+
+  // entries: [{ path, read: () => Promise<string> }]
+  async function importListing(entries) {
+    const found = {};
+    for (const entry of entries) {
+      const parts = entry.path.replace(/\\/g, "/").split("/").filter(Boolean);
+      const name = parts[parts.length - 1];
+      let locale, field, rank = 0;
+      if (LISTING_FILES[name] && parts.length >= 2) {
+        locale = parts[parts.length - 2]; field = LISTING_FILES[name];
+      } else if (/\.txt$/.test(name) && parts.length >= 3 && parts[parts.length - 2] === "changelogs") {
+        // default.txt gewinnt, sonst der höchste versionCode.
+        locale = parts[parts.length - 3]; field = "mWhats";
+        rank = name === "default.txt" ? Infinity : Number(name.slice(0, -4)) || 0;
+      }
+      if (!locale || !LOCALE_RE.test(locale)) continue;
+      const slot = found[locale] || (found[locale] = {});
+      if (slot[field] && slot[field].rank >= rank) continue;
+      slot[field] = { rank, text: (await entry.read()).replace(/^﻿/, "").trim() };
+    }
+    const locales = Object.keys(found).sort();
+    if (!locales.length) {
+      toast("Keine Store-Texte gefunden. Erwartet wird die Fastlane-Struktur: <Sprache>/title.txt usw.", "error");
+      return;
+    }
+    checkpoint();
+    locales.forEach((locale) => {
+      ensureLocale(locale);
+      Object.entries(found[locale]).forEach(([field, { text }]) => { state.texts[locale][field] = text; });
+    });
+    // Eine leere Startsprache, die im Import nicht vorkommt, stört nur.
+    const isBlank = (locale) => LOCALE_FIELDS.every((id) => !state.texts[locale][id].trim()) &&
+      state.shots.every((shot) => !caption(shot, locale).headline.trim() && !caption(shot, locale).sub.trim());
+    state.locales.filter((l) => !found[l] && isBlank(l)).forEach((locale) => {
+      state.locales = state.locales.filter((l) => l !== locale);
+      delete state.texts[locale];
+    });
+    if (!state.texts[state.locale]) state.locale = state.locales[0];
+    showLocale();
+    renderLocaleUi();
+    renderList();
+    touch({ shots: true });
+    toast(`Texte importiert: ${locales.join(", ")}.`);
+  }
+  async function importZip(file) {
+    if (!hasZip()) throw new Error("Die ZIP-Bibliothek fehlt (assets/vendor/jszip.min.js).");
+    const zip = await window.JSZip.loadAsync(file);
+    const entries = [];
+    zip.forEach((path, entry) => { if (!entry.dir && /\.txt$/.test(path)) entries.push({ path, read: () => entry.async("string") }); });
+    await importListing(entries);
+  }
+  function importFolder(files) {
+    return importListing(files
+      .filter((f) => /\.txt$/.test(f.name))
+      .map((f) => ({ path: f.webkitRelativePath || f.name, read: () => f.text() })));
+  }
+
+  /* ================================================================== *
    * Checkliste und Export
    * ================================================================== */
 
-  const textOk = (id) => !!$(id).value.trim() && $(id).value.length <= LIMITS[id];
+  const fieldOk = (texts, id) => !!texts[id].trim() && texts[id].length <= LIMITS[id];
+  const TEXT_LABELS = { mTitle: "App-Name", mShort: "Kurzbeschreibung", mFull: "Beschreibung" };
+  const titleFor = (texts) => texts.ftitle.trim() || texts.mTitle.trim();
 
   function checks() {
-    const n = state.shots.length;
-    return [
+    commitLocale();
+    const n = state.shots.length, multi = state.locales.length > 1, first = state.locales[0];
+    const list = [
       { ok: !!state.iconLogo, label: "App-Icon 512 × 512", note: "32-Bit-PNG, unter 1 MB, ohne vorgerundete Ecken.", go: "icon" },
       { ok: n >= 2, label: `Screenshots (${n} von ${MAX_SHOTS})`, note: "Mindestens 2, ab 4 im Hochformat Featuring-fähig.", go: "shots" },
-      { ok: !!featureTitle(), label: "Feature Graphic 1024 × 500", note: "Immer erforderlich, auch ohne Vorschauvideo. Braucht einen Titel.", go: "feat" },
-      { ok: textOk("mTitle"), label: "App-Name", note: "Höchstens 30 Zeichen.", go: "text" },
-      { ok: textOk("mShort"), label: "Kurzbeschreibung", note: "Höchstens 80 Zeichen, steht unter dem Titel.", go: "text" },
-      { ok: textOk("mFull"), label: "Vollständige Beschreibung", note: "Höchstens 4000 Zeichen.", go: "text" },
+    ];
+    state.locales.forEach((locale) => {
+      const texts = state.texts[locale];
+      const missing = Object.keys(TEXT_LABELS).filter((id) => !fieldOk(texts, id)).map((id) => TEXT_LABELS[id]);
+      if (texts.mWhats.length > LIMITS.mWhats) missing.push("Was ist neu (zu lang)");
+      const copied = locale !== first && !!texts.mFull.trim() && texts.mFull === state.texts[first].mFull;
+      list.push({
+        ok: !missing.length && !copied, go: "text", locale,
+        label: multi ? `Store-Texte ${locale}` : "Store-Texte",
+        note: missing.length ? "Fehlt oder zu lang: " + missing.join(", ") + "."
+          : copied ? `Noch wortgleich mit ${first} — bitte übersetzen.`
+          : "App-Name, Kurzbeschreibung und Beschreibung sind innerhalb der Limits.",
+      });
+    });
+    const untitled = state.locales.filter((locale) => !titleFor(state.texts[locale]));
+    list.push({
+      ok: !untitled.length, go: "feat", locale: untitled[0], label: "Feature Graphic 1024 × 500",
+      note: untitled.length ? "Braucht einen Titel" + (multi ? ` (${untitled.join(", ")})` : "") + " — kommt sonst aus dem App-Namen."
+        : "Immer erforderlich, auch ohne Vorschauvideo.",
+    });
+    list.push(
       { ok: null, label: "Datenschutzerklärung", note: "In der Play Console die URL hinterlegen." },
       { ok: null, label: "Data-Safety-Formular", note: "In der Play Console ausfüllen — passend zur Beschreibung und zum tatsächlichen Verhalten." },
-      { ok: null, label: "Inhaltseinstufung", note: "In der Play Console den Fragebogen ausfüllen." },
-    ];
+      { ok: null, label: "Inhaltseinstufung", note: "In der Play Console den Fragebogen ausfüllen." });
+    return list;
   }
   function renderStatus() {
     $("statuslist").replaceChildren(...checks().map((c) => el("li", { class: c.ok === true ? "done" : c.ok === null ? "info" : "" },
       el("span", { class: "mark", text: c.ok === true ? "✓" : c.ok === null ? "→" : "!" }),
       el("div", {}, c.label, el("small", { text: c.note })),
-      c.ok === false ? el("button", { class: "linkbtn", type: "button", text: "Öffnen", onclick: () => activate(c.go) }) : null
+      c.ok === false ? el("button", {
+        class: "linkbtn", type: "button", text: "Öffnen",
+        onclick: () => { if (c.locale) switchLocale(c.locale); activate(c.go); },
+      }) : null
     )));
   }
   function setStep(id, label, done) {
@@ -1064,23 +1512,24 @@
     node.classList.toggle("done", done);
   }
   function updateSteps() {
-    const n = state.shots.length;
-    const texts = ["mTitle", "mShort", "mFull"].filter(textOk).length;
-    const open = checks().filter((c) => c.ok === false).length;
+    const all = checks(), n = state.shots.length, texts = state.texts[state.locale];
+    const filled = Object.keys(TEXT_LABELS).filter((id) => fieldOk(texts, id)).length;
+    const open = all.filter((c) => c.ok === false).length;
     setStep("icon", state.iconLogo ? "✓" : "fehlt", !!state.iconLogo);
     setStep("shots", `${n}/${MAX_SHOTS}`, n >= 2);
-    setStep("feat", featureTitle() ? "✓" : "Titel fehlt", !!featureTitle());
-    setStep("text", texts === 3 && $("mWhats").value.length <= LIMITS.mWhats ? "✓" : `${texts}/3`, texts === 3);
+    setStep("brief", $("bWhat").value.trim() ? "✓" : "", true);
+    setStep("text", filled === 3 && texts.mWhats.length <= LIMITS.mWhats ? "✓" : `${filled}/3`, filled === 3);
+    setStep("feat", titleFor(texts) ? "✓" : "Titel fehlt", !!titleFor(texts));
     setStep("export", open ? `${open} offen` : "bereit", !open);
   }
 
-  const metaBase = () => `fastlane/metadata/android/${$("mLocale").value}/`;
   const publishCommand = () =>
     `node tools/play-publish/publish.js --package ${$("mPackage").value.trim() || "com.example.app"} --dry-run`;
 
   function renderTree() {
+    const more = state.locales.length - 1;
     const lines = [
-      [`fastlane/metadata/android/${$("mLocale").value}/`, true],
+      [`fastlane/metadata/android/${state.locale}/`, true],
       ["  title.txt"], ["  short_description.txt"], ["  full_description.txt"],
       ["  changelogs/default.txt"],
       ["  images/", true],
@@ -1088,6 +1537,7 @@
       ["    featureGraphic.jpg    1024 × 500"],
       [`    ${shotDir()}/`, true],
       ["      1_screenshot.jpg … 8_screenshot.jpg"],
+      more > 0 ? [`… genauso für ${state.locales.filter((l) => l !== state.locale).join(", ")}`] : null,
       ["android/app/src/main/res/", true],
       ["  mipmap-mdpi … mipmap-xxxhdpi/"],
       ["    ic_launcher.png · ic_launcher_round.png"],
@@ -1096,22 +1546,38 @@
       ["    ic_launcher_monochrome.png"],
       ["  mipmap-anydpi-v26/"],
       ["    ic_launcher.xml · ic_launcher_round.xml"],
-    ];
+    ].filter(Boolean);
     $("tree").replaceChildren(...lines.flatMap(([text, bold]) => [bold ? el("b", { text }) : text, "\n"]));
   }
 
   async function buildZip(full) {
     if (!hasZip()) { toast("Die ZIP-Bibliothek fehlt (assets/vendor/jszip.min.js). Lade die Assets einzeln.", "error"); return; }
-    repaintShots();
-    drawFeature();
-    const zip = new window.JSZip(), base = metaBase(), jobs = [];
-    const text = (path, id) => { const v = $(id).value.trim(); if (v) zip.file(base + path, v + "\n"); };
-    text("title.txt", "mTitle");
-    text("short_description.txt", "mShort");
-    text("full_description.txt", "mFull");
-    text("changelogs/default.txt", "mWhats");
+    const zip = new window.JSZip(), original = state.locale;
+    const icon = state.iconLogo ? await storeIconBlob() : null;
+    try {
+      // Jede Sprache nacheinander rendern: Captions und Feature Graphic
+      // tragen Text, also braucht jede ihre eigenen Bilder.
+      for (const locale of state.locales) {
+        viewLocale(locale);
+        const base = `fastlane/metadata/android/${locale}/`, texts = state.texts[locale];
+        const text = (path, id) => { const v = texts[id].trim(); if (v) zip.file(base + path, v + "\n"); };
+        text("title.txt", "mTitle");
+        text("short_description.txt", "mShort");
+        text("full_description.txt", "mFull");
+        text("changelogs/default.txt", "mWhats");
+        if (icon) zip.file(base + "images/icon.png", icon);
+        zip.file(base + "images/featureGraphic.jpg", await toBlob($("fcanvas"), "image/jpeg"));
+        for (let i = 0; i < state.shots.length; i++) {
+          zip.file(`${base}images/${shotDir()}/${i + 1}_screenshot.jpg`, await toBlob(state.shots[i].canvas, "image/jpeg"));
+        }
+      }
+    } finally {
+      viewLocale(original);
+      renderSearchSim();
+    }
     zip.file("LIESMICH.txt",
-      "Play-Store-Paket aus der Listing-Werkbank\n\n" +
+      "Play-Store-Paket aus der Listing-Werkbank\n" +
+      "Sprachen: " + state.locales.join(", ") + "\n\n" +
       "1. Den Ordner fastlane/ ins Wurzelverzeichnis deines Repos legen.\n" +
       "2. Prüfen, ohne etwas zu veröffentlichen:\n" +
       "   " + publishCommand() + "\n" +
@@ -1119,22 +1585,16 @@
       "   Alternative: fastlane supply --skip_upload_apk\n" +
       (full ? "4. android/app/src/main/res/ in dein Android-Projekt übernehmen (Launcher-Icons).\n" : "") +
       "\nManuell in der Play Console bleiben: Datenschutz-URL, Data-Safety-Formular, Inhaltseinstufung.\n");
-
-    if (state.iconLogo) jobs.push(storeIconBlob().then((b) => zip.file(base + "images/icon.png", b)));
-    jobs.push(toBlob($("fcanvas"), "image/jpeg").then((b) => zip.file(base + "images/featureGraphic.jpg", b)));
-    state.shots.forEach((shot, i) => {
-      jobs.push(toBlob(shot.canvas, "image/jpeg").then((b) => zip.file(`${base}images/${shotDir()}/${i + 1}_screenshot.jpg`, b)));
-    });
-    if (full) jobs.push(addLauncherFiles(zip));
-    await Promise.all(jobs);
-    saveBlob(await zip.generateAsync({ type: "blob" }), `play-listing-${$("mLocale").value}.zip`);
+    if (full) await addLauncherFiles(zip);
+    const name = state.locales.length > 1 ? `${state.locales.length}-sprachen` : state.locale;
+    saveBlob(await zip.generateAsync({ type: "blob" }), `play-listing-${name}.zip`);
 
     const open = checks().filter((c) => c.ok === false).map((c) => c.label.replace(/\s*\(.*\)$/, ""));
     toast(open.length ? "Exportiert. Noch offen: " + open.join(", ") + "." : "Paket exportiert — alles Nötige ist drin.");
   }
 
   /* ================================================================== *
-   * Projekt: Autosave im Browser, Datei zum Mitnehmen
+   * Projekt: Verlauf, Autosave im Browser, Datei zum Mitnehmen
    * ================================================================== */
 
   const isCheckbox = (node) => node.type === "checkbox";
@@ -1164,7 +1624,101 @@
     });
   }
 
-  // Lokale Ablage. Blobs wandern unverändert in die IndexedDB.
+  // ---- Momentaufnahmen. Bilder werden nur referenziert, nie kopiert.
+  function capture() {
+    commitLocale();
+    return {
+      settings: readSettings(),
+      locales: [...state.locales],
+      texts: clone(state.texts),
+      shots: state.shots.map((s) => ({
+        id: s.id, blob: s.blob, img: s.img, url: s.url,
+        captions: clone(s.captions), note: s.note, layout: s.layout, bg: s.bg ? [...s.bg] : null,
+      })),
+      iconLogo: state.iconLogo, featLogo: state.featLogo, font: state.font,
+    };
+  }
+  function applyCaptured(c) {
+    state.locales = [...c.locales];
+    state.texts = clone(c.texts);
+    if (!state.texts[state.locale]) state.locale = state.locales[0];
+    state.shots = c.shots.map((s) => newShot(s, { captions: clone(s.captions), bg: s.bg ? [...s.bg] : null }));
+    state.iconLogo = c.iconLogo;
+    state.featLogo = c.featLogo;
+    state.font = c.font;
+    activateFont(state.font);
+    applySettings(c.settings);
+    showLocale();
+    renderLocaleUi();
+    renderList();
+    renderPlates();
+    renderPalettes();
+    refresh();
+  }
+  // Die aktive Sprache ist Ansicht, kein Inhalt — sie zählt nicht als Änderung.
+  const signature = (c) => JSON.stringify([
+    c.settings, c.locales, c.texts,
+    c.shots.map((s) => [s.id, s.captions, s.note, s.layout, s.bg]),
+    c.iconLogo && c.iconLogo.id, c.featLogo && c.featLogo.id, c.font && c.font.id,
+  ]);
+
+  // ---- Verlauf für Rückgängig / Wiederholen
+  // Nicht „history“ nennen — das würde window.history verdecken.
+  const timeline = { past: [], future: [], present: null, sig: "" };
+  function updateHistoryUi() {
+    $("undo").disabled = !timeline.past.length;
+    $("redo").disabled = !timeline.future.length;
+  }
+  function resetHistory() {
+    timeline.past = []; timeline.future = [];
+    timeline.present = capture();
+    timeline.sig = signature(timeline.present);
+    updateHistoryUi();
+  }
+  function commitHistory() {
+    const now = capture(), sig = signature(now);
+    if (sig === timeline.sig) return;
+    timeline.past.push(timeline.present);
+    if (timeline.past.length > HISTORY_LIMIT) timeline.past.shift();
+    timeline.present = now;
+    timeline.sig = sig;
+    timeline.future = [];
+    updateHistoryUi();
+  }
+  function stepHistory(from, to) {
+    clearTimeout(saveTimer);
+    commitHistory();                      // offene Eingaben erst festhalten
+    if (!from.length) return;
+    to.push(timeline.present);
+    timeline.present = from.pop();
+    timeline.sig = signature(timeline.present);
+    applyCaptured(timeline.present);
+    updateHistoryUi();
+    persist();
+  }
+  // Vor einer abgeschlossenen Aktion aufrufen (Bild entfernen, Vorschläge
+  // übernehmen …): sie wird so ein eigener Schritt und verschmilzt nicht mit
+  // dem, was gerade noch getippt wurde.
+  function checkpoint() {
+    clearTimeout(saveTimer);
+    commitHistory();
+  }
+  const undo = () => stepHistory(timeline.past, timeline.future);
+  const redo = () => stepHistory(timeline.future, timeline.past);
+
+  // Alle Bild-URLs, die noch irgendwo gebraucht werden könnten.
+  function liveUrls() {
+    const urls = new Set();
+    const add = (c) => {
+      if (!c) return;
+      c.shots.forEach((s) => urls.add(s.url));
+      [c.iconLogo, c.featLogo].forEach((a) => { if (a) urls.add(a.url); });
+    };
+    [...timeline.past, timeline.present, ...timeline.future, state].forEach(add);
+    return urls;
+  }
+
+  // ---- Lokale Ablage. Blobs wandern unverändert in die IndexedDB.
   const local = {
     open() {
       return new Promise((resolve, reject) => {
@@ -1191,54 +1745,103 @@
   };
 
   function snapshot() {
+    const c = capture();
     return {
       version: PROJECT_VERSION,
-      settings: readSettings(),
-      shots: state.shots.map((s) => ({ headline: s.headline, sub: s.sub, blob: s.blob })),
-      logo: state.iconLogo ? state.iconLogo.blob : null,
-      featLogo: state.featLogo ? state.featLogo.blob : null,
+      settings: c.settings, locale: state.locale, locales: c.locales, texts: c.texts,
+      shots: c.shots.map((s) => ({ captions: s.captions, note: s.note, layout: s.layout, bg: s.bg, blob: s.blob })),
+      logo: c.iconLogo ? c.iconLogo.blob : null,
+      featLogo: c.featLogo ? c.featLogo.blob : null,
+      font: c.font ? { blob: c.font.blob, name: c.font.name } : null,
+    };
+  }
+
+  // Bringt jeden gespeicherten Stand — auch ältere Versionen und fremde
+  // Dateien — in die aktuelle, geprüfte Form.
+  function normalize(snap) {
+    const settings = snap.settings && typeof snap.settings === "object" ? snap.settings : {};
+    const str = (v) => (typeof v === "string" ? v : "");
+    const layouts = Array.from($("layout").options).map((o) => o.value);
+    let locales = (Array.isArray(snap.locales) ? snap.locales : []).filter((l) => typeof l === "string" && LOCALE_RE.test(l));
+    const texts = {};
+    if (locales.length && snap.texts && typeof snap.texts === "object") {
+      locales.forEach((locale) => {
+        const src = snap.texts[locale] || {};
+        texts[locale] = emptyTexts();
+        LOCALE_FIELDS.forEach((id) => { texts[locale][id] = str(src[id]); });
+        texts[locale].alts = (Array.isArray(src.alts) ? src.alts : []).filter((a) => typeof a === "string").slice(0, 5);
+      });
+    } else {
+      // Bis Version 3 gab es genau eine Sprache, ihre Texte lagen in den Einstellungen.
+      const locale = LOCALE_RE.test(str(settings.mLocale)) ? settings.mLocale : DEFAULT_LOCALE;
+      locales = [locale];
+      texts[locale] = emptyTexts();
+      LOCALE_FIELDS.forEach((id) => { texts[locale][id] = str(settings[id]); });
+    }
+    const shots = (Array.isArray(snap.shots) ? snap.shots : []).slice(0, MAX_SHOTS).map((s) => {
+      const captions = {};
+      locales.forEach((locale) => {
+        const src = (s.captions && s.captions[locale]) || (locale === locales[0] && !s.captions ? s : {});
+        captions[locale] = { headline: str(src.headline), sub: str(src.sub) };
+      });
+      const bg = Array.isArray(s.bg) && s.bg.length === 2 && s.bg.every((c) => /^#[0-9a-f]{6}$/i.test(c)) ? [...s.bg] : null;
+      return { blob: s.blob, captions, note: str(s.note), layout: layouts.includes(s.layout) ? s.layout : "", bg };
+    });
+    return {
+      settings, locales, texts, shots,
+      locale: locales.includes(snap.locale) ? snap.locale : locales[0],
+      logo: snap.logo || null, featLogo: snap.featLogo || null,
+      font: snap.font && snap.font.blob ? snap.font : null,
     };
   }
   async function restore(snap) {
-    const shots = await Promise.all((snap.shots || []).slice(0, MAX_SHOTS).map(async (s) => ({
-      ...(await loadAsset(s.blob)), id: nextId++, headline: String(s.headline || ""), sub: String(s.sub || ""), canvas: null,
-    })));
-    const iconLogo = snap.logo ? await loadAsset(snap.logo) : null;
-    const featLogo = snap.featLogo ? await loadAsset(snap.featLogo) : null;
-    // Erst wenn alles gelesen ist, den alten Stand ersetzen.
-    [...state.shots, state.iconLogo, state.featLogo].forEach(releaseAsset);
-    Object.assign(state, { shots, iconLogo, featLogo });
-    applySettings(snap.settings);
-    renderList();
-    renderPlates();
-    renderPalettes();
-    refresh();
+    const data = normalize(snap);
+    const shots = await Promise.all(data.shots.map(async (s) => ({ ...(await loadAsset(s.blob)), ...s })));
+    const iconLogo = data.logo ? await loadAsset(data.logo) : null;
+    const featLogo = data.featLogo ? await loadAsset(data.featLogo) : null;
+    let font = null;
+    if (data.font) {
+      try { font = await loadFont(data.font.blob, data.font.name); }
+      catch (_) { toast("Die gespeicherte Schrift ließ sich nicht laden — es gilt die Standardschrift.", "error"); }
+    }
+    // Erst wenn alles gelesen ist, den alten Stand ersetzen und freigeben.
+    const stale = liveUrls();
+    state.locale = data.locale;
+    applyCaptured({ settings: data.settings, locales: data.locales, texts: data.texts, shots, iconLogo, featLogo, font });
+    resetHistory();
+    stale.forEach((url) => URL.revokeObjectURL(url));
   }
 
   let saveTimer = 0, autosave = true;
   function setSaveState(text) { $("savestate").textContent = text; }
-  function markDirty() {
+  async function persist() {
     if (!autosave) return;
+    try { await local.save(snapshot()); setSaveState("Automatisch gespeichert"); }
+    catch (err) {
+      console.warn("Autosave fehlgeschlagen", err);
+      autosave = false;
+      setSaveState("Autosave nicht möglich — bitte „Sichern“ nutzen");
+    }
+  }
+  // Kurz warten, bis die Eingabe zur Ruhe kommt: ein Tippvorgang wird so zu
+  // einem Schritt im Verlauf und zu einem Schreibvorgang.
+  function markDirty() {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(async () => {
-      try { await local.save(snapshot()); setSaveState("Automatisch gespeichert"); }
-      catch (err) {
-        console.warn("Autosave fehlgeschlagen", err);
-        autosave = false;
-        setSaveState("Autosave nicht möglich — bitte „Sichern“ nutzen");
-      }
-    }, 600);
+    saveTimer = setTimeout(() => { commitHistory(); persist(); }, 600);
   }
 
   async function saveProjectFile() {
     const snap = snapshot();
     const data = {
-      version: snap.version, saved: new Date().toISOString(), settings: snap.settings,
-      shots: await Promise.all(snap.shots.map(async (s) => ({ headline: s.headline, sub: s.sub, image: await blobToDataUrl(s.blob) }))),
+      version: snap.version, saved: new Date().toISOString(),
+      settings: snap.settings, locale: snap.locale, locales: snap.locales, texts: snap.texts,
+      shots: await Promise.all(snap.shots.map(async ({ blob, ...rest }) => ({ ...rest, image: await blobToDataUrl(blob) }))),
       logo: snap.logo ? await blobToDataUrl(snap.logo) : null,
       featLogo: snap.featLogo ? await blobToDataUrl(snap.featLogo) : null,
+      font: snap.font ? { name: snap.font.name, data: await blobToDataUrl(snap.font.blob) } : null,
     };
-    const slug = $("mTitle").value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "listing";
+    const title = state.texts[state.locales[0]].mTitle;
+    const slug = title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "listing";
     saveBlob(new Blob([JSON.stringify(data)], { type: "application/json" }), slug + "-projekt.json");
     toast("Projektdatei gesichert.");
   }
@@ -1246,13 +1849,18 @@
     try {
       const data = JSON.parse(await file.text());
       if (!data || typeof data !== "object" || typeof data.settings !== "object") throw new Error("Kein Projekt");
+      let font = null;
+      if (data.font && data.font.data) {
+        try { font = { name: data.font.name, blob: dataUrlToBlob(data.font.data, "font") }; } catch (_) { /* ohne Schrift weiter */ }
+      }
       await restore({
-        settings: data.settings,
-        shots: (Array.isArray(data.shots) ? data.shots : []).map((s) => ({ headline: s.headline, sub: s.sub, blob: dataUrlToBlob(s.image) })),
+        ...data,
+        shots: (Array.isArray(data.shots) ? data.shots : []).map((s) => ({ ...s, blob: dataUrlToBlob(s.image) })),
         logo: data.logo ? dataUrlToBlob(data.logo) : null,
         featLogo: data.featLogo ? dataUrlToBlob(data.featLogo) : null,
+        font,
       });
-      markDirty();
+      await persist();
       toast("Projekt geladen.");
     } catch (err) {
       console.error(err);
@@ -1261,7 +1869,8 @@
   }
   async function newProject() {
     if (!confirm("Alle Bilder, Texte und Einstellungen verwerfen und leer anfangen?")) return;
-    await restore({ settings: DEFAULTS, shots: [] });
+    clearTimeout(saveTimer);
+    await restore({ settings: DEFAULTS });
     try { await local.clear(); } catch (_) { /* nichts gespeichert */ }
     setSaveState("");
     activate("icon");
@@ -1271,6 +1880,11 @@
    * Aktualisieren
    * ================================================================== */
 
+  function setDropState(id, loaded, textLoaded, textEmpty) {
+    $(id).classList.toggle("loaded", loaded);
+    $(id).querySelector("strong").textContent = loaded ? textLoaded : textEmpty;
+  }
+
   // Alles Leichte in einem Rutsch. Die großen Screenshot-Canvases laufen
   // getrennt über repaintShots, weil sie pro Frame mehrere Megapixel kosten.
   function refresh() {
@@ -1279,18 +1893,18 @@
     });
     COLOR_GROUPS.forEach(renderContrast);
 
-    const ownLogo = !$("fusericon").checked;
-    $("flogofield").hidden = !ownLogo;
+    $("flogofield").hidden = $("fusericon").checked;
     $("flogoclear").hidden = !state.featLogo;
-    $("flogodrop").classList.toggle("loaded", !!state.featLogo);
-    $("flogodrop").querySelector("strong").textContent = state.featLogo ? "Eigenes Logo geladen — anderes wählen" : "Eigenes Logo auswählen";
-    $("ilogodrop").classList.toggle("loaded", !!state.iconLogo);
-    $("ilogodrop").querySelector("strong").textContent = state.iconLogo ? "Logo geladen — anderes wählen" : "Logo auswählen";
+    $("fontclear").hidden = !state.font;
+    setDropState("flogodrop", !!state.featLogo, "Eigenes Logo geladen — anderes wählen", "Eigenes Logo auswählen");
+    setDropState("ilogodrop", !!state.iconLogo, "Logo geladen — anderes wählen", "Logo auswählen");
+    setDropState("fontdrop", !!state.font, state.font ? state.font.name : "", "Eigene Schrift laden");
 
     drawIcons();
     drawFeature();
     syncText();
     if (activePanel === "sim") renderStorePreview();
+    if (activePanel === "brief") $("promptview").textContent = buildPrompt();
     renderStatus();
     renderTree();
     $("nextcmd").textContent = publishCommand();
@@ -1309,12 +1923,8 @@
     const target = e.target;
     if (!(target instanceof HTMLElement) || target.type === "file") return;
     const inRow = !!target.closest(".shotrow");
-    if (!inRow && !SETTINGS.includes(target.id)) return;
-    touch({
-      plates: REBUILD_PLATES.has(target.id),
-      // Der Rahmen bestimmt auch das Gerät in der Feature Graphic.
-      shots: inRow || REPAINT_SHOTS.has(target.id),
-    });
+    if (!inRow && !target.closest(".noterow") && !SETTINGS.includes(target.id) && !LOCALE_FIELDS.includes(target.id)) return;
+    touch({ plates: REBUILD_PLATES.has(target.id), shots: inRow || REPAINT_SHOTS.has(target.id) });
   }
   document.addEventListener("input", onEdit);
   document.addEventListener("change", onEdit);
@@ -1326,7 +1936,9 @@
   wireDrop($("drop"), $("file"), addShots);
   wireDrop($("ilogodrop"), $("ilogo"), (files) => setLogo("iconLogo", files[0]));
   wireDrop($("flogodrop"), $("flogo"), (files) => setLogo("featLogo", files[0]));
-  $("flogoclear").addEventListener("click", () => { releaseAsset(state.featLogo); state.featLogo = null; touch(); });
+  wireDrop($("fontdrop"), $("fontfile"), (files) => setFont(files[0]));
+  $("flogoclear").addEventListener("click", () => { state.featLogo = null; touch(); });
+  $("fontclear").addEventListener("click", () => { state.font = null; activateFont(null); touch({ shots: true }); });
 
   // Dateien irgendwo fallen lassen: nie die Seite verlassen, und im
   // Screenshot-Schritt direkt übernehmen.
@@ -1353,23 +1965,58 @@
   onClick("zipmeta", () => buildZip(false));
   onClick("projsave", saveProjectFile);
   onClick("projnew", newProject);
-  $("projload").addEventListener("click", () => $("projfile").click());
-  $("projfile").addEventListener("change", (e) => {
-    const file = e.target.files[0];
-    e.target.value = "";
-    if (file) loadProjectFile(file);
-  });
+
+  // Dateiauswahl hinter einem gewöhnlichen Button.
+  function pickFile(buttonId, inputId, onFiles) {
+    $(buttonId).addEventListener("click", () => $(inputId).click());
+    $(inputId).addEventListener("change", (e) => {
+      const files = Array.from(e.target.files);
+      e.target.value = "";
+      if (!files.length) return;
+      Promise.resolve(onFiles(files)).catch((err) => { console.error(err); toast("Das hat nicht geklappt: " + err.message, "error"); });
+    });
+  }
+  pickFile("projload", "projfile", (files) => loadProjectFile(files[0]));
+  pickFile("importzip", "importzipfile", (files) => importZip(files[0]));
+  pickFile("importdir", "importdirfile", importFolder);
+
   $("copycmd").addEventListener("click", async () => {
-    const text = publishCommand();
-    try { await navigator.clipboard.writeText(text); }
-    catch (_) {
-      const range = document.createRange();
-      range.selectNodeContents($("nextcmd"));
-      const sel = getSelection();
-      sel.removeAllRanges(); sel.addRange(range);
-      try { document.execCommand("copy"); } catch (_e) { toast("Bitte den markierten Befehl von Hand kopieren."); return; }
-    }
-    toast("Befehl kopiert.");
+    toast(await copyText(publishCommand(), $("nextcmd")) ? "Befehl kopiert." : "Bitte den markierten Befehl von Hand kopieren.");
+  });
+  $("promptcopy").addEventListener("click", async () => {
+    const prompt = buildPrompt();
+    $("promptview").textContent = prompt;
+    if (!$("bWhat").value.trim()) toast("Tipp: Beschreibe zuerst, was die App tut — sonst bleiben die Texte allgemein.");
+    const details = $("promptview").closest("details");
+    if (await copyText(prompt, $("promptview"))) toast("Auftrag kopiert. Jetzt in den Assistenten einfügen.");
+    else { details.open = true; toast("Bitte den Auftrag unten markieren und von Hand kopieren."); }
+  });
+  $("aiApply").addEventListener("click", () => {
+    if (!$("aiResult").value.trim()) { toast("Füge zuerst die Antwort des Assistenten ein.", "error"); return; }
+    try { applySuggestions($("aiResult").value); }
+    catch (err) { toast(err.message, "error"); }
+  });
+
+  $("langswitch").addEventListener("change", (e) => switchLocale(e.target.value));
+  $("langmanage").addEventListener("click", () => { renderLocaleUi(); $("langdialog").showModal(); });
+  $("langclose").addEventListener("click", () => $("langdialog").close());
+  $("langaddbtn").addEventListener("click", () => { if ($("langadd").value) addLocale($("langadd").value, $("langcopy").checked); });
+  // Klick neben den Dialog schließt ihn.
+  $("langdialog").addEventListener("click", (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
+
+  $("undo").addEventListener("click", undo);
+  $("redo").addEventListener("click", redo);
+  document.addEventListener("keydown", (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    const key = e.key.toLowerCase();
+    if (key !== "z" && key !== "y") return;
+    // In Textfeldern gehört Strg+Z dem Browser.
+    const t = e.target;
+    const typing = t instanceof HTMLElement &&
+      (t.tagName === "TEXTAREA" || (t.tagName === "INPUT" && /^(text|search|url|email|number)$/.test(t.type)));
+    if (typing || $("langdialog").open) return;
+    e.preventDefault();
+    if (key === "y" || e.shiftKey) redo(); else undo();
   });
 
   /* ================================================================== *
@@ -1396,8 +2043,9 @@
       console.warn("Gespeicherter Stand unlesbar", err);
       saved = null;
     }
-    if (!saved) { applySettings(DEFAULTS); renderPlates(); }
+    if (!saved) await restore({ settings: DEFAULTS });
     activate(location.hash.slice(1) || "icon");
+    document.documentElement.dataset.ready = "true";
   }
   boot();
 })();
