@@ -319,9 +319,13 @@ test("Briefing: Auftrag enthält die Angaben, die Antwort füllt Texte und Capti
 
   // Ein Schritt zurück stellt den Stand vor den Vorschlägen wieder her —
   // das Briefing selbst bleibt stehen.
+  // Der Klick auf die Namensalternative ist ein eigener Schritt.
   await settle(page);
-  await page.locator("#undo").click();
   await page.locator("#tab-text").click();
+  await page.locator("#undo").click();
+  await expect(page.locator("#mTitle")).toHaveValue("Stundenwerk");
+  await expect(page.locator("#mShort")).toHaveValue("Arbeitszeit erfassen und abrechnen.");
+  await page.locator("#undo").click();
   await expect(page.locator("#mShort")).toHaveValue("");
   await expect(page.locator("#mTitle")).toHaveValue("");
   await page.locator("#tab-brief").click();

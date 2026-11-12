@@ -1233,7 +1233,7 @@
     const alts = (state.texts[state.locale].alts || []).filter((alt) => alt !== $("mTitle").value.trim());
     $("titlealts").replaceChildren(...(alts.length ? [el("span", { text: "Alternativen:" }), ...alts.map((alt) => el("button", {
       class: "altchip", type: "button", text: alt, title: "Als App-Namen übernehmen",
-      onclick: () => { $("mTitle").value = alt; touch(); },
+      onclick: () => { checkpoint(); $("mTitle").value = alt; touch(); },
     }))] : []));
     lint();
   }
