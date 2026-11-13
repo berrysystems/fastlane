@@ -106,8 +106,9 @@ Variables*:
 
 Danach *Actions → Seite veröffentlichen → Run workflow* erneut starten.
 
-Die drei Werte sind keine Geheimnisse — sie stehen bewusst unter *Variables*,
-damit nachvollziehbar bleibt, was eingestellt ist.
+Die drei Werte sind keine Geheimnisse — unter *Variables* bleibt
+nachvollziehbar, was eingestellt ist. Gleichnamige *Secrets* liest der
+Workflow ebenfalls; eine Variable hat Vorrang.
 
 ### 7. Prüfen
 
