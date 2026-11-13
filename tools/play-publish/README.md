@@ -55,7 +55,7 @@ cp .env.example .env
 
 Dann den Schlüssel in `.env` eintragen. Das Skript liest die Datei selbst —
 aus dem aktuellen Verzeichnis und aus `tools/play-publish/`. Variablen, die in
-der Umgebung schon gesetzt sind, haben Vorrang. Braucht Node 20 oder neuer.
+der Umgebung schon gesetzt sind, haben Vorrang. Braucht Node 22 oder neuer.
 
 ## Benutzen
 

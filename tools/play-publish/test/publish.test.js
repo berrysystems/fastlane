@@ -5,7 +5,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { readImageInfo, readLocale, validateLocale, collectLocales, loadEnvFile, pullListings } = require("../publish.js");
+const { readImageInfo, readLocale, validateLocale, collectLocales, loadEnvFile, pullListings, readCredentials } = require("../publish.js");
 
 /** Kleinstes PNG, das die Header-Prüfung braucht: Signatur + IHDR. */
 function png(width, height, colourType = 2) {
@@ -155,4 +155,22 @@ test("--pull überschreibt abweichende lokale Texte nur mit --force", async () =
   assert.equal(fs.readFileSync(path.join(root, "de-DE/title.txt"), "utf8"), "Lokal geändert\n");
   await pullListings(fakePublisher(listings), "de.beispiel.app", root, { force: true });
   assert.equal(fs.readFileSync(path.join(root, "de-DE/title.txt"), "utf8"), "Tagwerk\n");
+});
+
+test("Zugangsdaten: --key vor Umgebung, verständliche Fehler", () => {
+  const key = { type: "service_account", client_email: "a@b.iam.gserviceaccount.com", private_key: "k" };
+  const root = fixture({ "key.json": JSON.stringify({ ...key, client_email: "datei@b.iam.gserviceaccount.com" }), "kaputt.json": "{" });
+  const file = path.join(root, "key.json");
+  const inline = { GOOGLE_SERVICE_ACCOUNT_KEY: JSON.stringify(key) };
+
+  assert.equal(readCredentials(null, inline).client_email, "a@b.iam.gserviceaccount.com");
+  assert.equal(readCredentials(file, inline).client_email, "datei@b.iam.gserviceaccount.com");
+  assert.equal(readCredentials(null, { GOOGLE_APPLICATION_CREDENTIALS: file }).client_email, "datei@b.iam.gserviceaccount.com");
+  // Der Inhalt in der Umgebung gewinnt gegen den Pfad in der Umgebung.
+  assert.equal(readCredentials(null, { ...inline, GOOGLE_APPLICATION_CREDENTIALS: file }).client_email, "a@b.iam.gserviceaccount.com");
+
+  assert.throws(() => readCredentials(null, {}), /Keine Zugangsdaten/);
+  assert.throws(() => readCredentials(path.join(root, "fehlt.json"), {}), /nicht gefunden/);
+  assert.throws(() => readCredentials(path.join(root, "kaputt.json"), {}), /kein gültiges JSON/);
+  assert.throws(() => readCredentials(null, { GOOGLE_SERVICE_ACCOUNT_KEY: "{\"type\":\"authorized_user\"}" }), /kein Service-Account-Schlüssel/);
 });
