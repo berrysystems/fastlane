@@ -103,6 +103,29 @@ test("startet leer, zeigt sieben Schritte und lädt nichts von fremden Servern",
   expect(foreign).toEqual([]);
 });
 
+test("läuft unter den Schutz-Headern und zeigt, wer angemeldet ist", async ({ page }) => {
+  const response = await page.goto("/");
+  await page.waitForSelector("html[data-ready]");
+  const csp = response.headers()["content-security-policy"];
+  expect(csp).toContain("default-src 'none'");
+  expect(csp).toContain("frame-ancestors 'none'");
+  expect(response.headers()["x-frame-options"]).toBe("DENY");
+  await expect(page.locator("#userbox")).toBeVisible();
+  await expect(page.locator("#useremail")).toHaveText("test.nutzer@example.com");
+  await expect(page.locator("#userbox a")).toHaveAttribute("href", "/cdn-cgi/access/logout");
+});
+
+test("eigene Schrift lässt sich laden und wieder entfernen", async ({ page }) => {
+  await open(page);
+  await addShots(page, 2);
+  await page.locator("#fontfile").setInputFiles(path.resolve(__dirname, "..", "..", "docs", "assets", "fonts", "dm-mono-latin-500-normal.woff2"));
+  await expect(page.locator("#fontclear")).toBeVisible();
+  await expect(page.locator("#fontdrop strong")).toHaveText("dm-mono-latin-500-normal.woff2");
+  expect(await page.evaluate(() => document.fonts.check("700 20px ListingBrand"))).toBe(true);
+  await page.locator("#fontclear").click();
+  await expect(page.locator("#fontclear")).toBeHidden();
+});
+
 test("Schritte lassen sich mit den Pfeiltasten wechseln", async ({ page }) => {
   await open(page);
   await page.locator("#tab-icon").focus();
@@ -452,6 +475,7 @@ test("läuft auch per Doppelklick von der Festplatte", async ({ page, browserNam
   test.skip(browserName !== "chromium", "file:// wird nur in Chromium geprüft.");
   await open(page, "file://" + path.resolve(__dirname, "..", "..", "docs", "index.html"));
   await addShots(page, 2);
+  await expect(page.locator("#userbox")).toBeHidden();
   const { files } = await downloadZip(page, "#dlall");
   expect(files).toEqual(["screenshot-01.jpg", "screenshot-02.jpg"]);
 });
