@@ -22,6 +22,9 @@
         <p>Assets &amp; Texte für den Play Store</p>
       </div>
     </div>
+    <button class="btn projectbtn" type="button" id="projectbtn" title="Projekte wechseln, anlegen, sichern">
+      <span class="plabel">Projekt</span><b id="projectname"></b><span aria-hidden="true">▾</span>
+    </button>
     <div class="appactions">
       <span class="savestate" id="savestate" role="status"></span>
       <span class="userbox" id="userbox" hidden>
@@ -30,9 +33,6 @@
       </span>
       <button class="btn quiet icon" type="button" id="undo" title="Rückgängig (Strg+Z)" aria-label="Rückgängig" disabled>↶</button>
       <button class="btn quiet icon" type="button" id="redo" title="Wiederholen (Strg+Umschalt+Z)" aria-label="Wiederholen" disabled>↷</button>
-      <button class="btn quiet" type="button" id="projnew" title="Alles zurücksetzen und leer anfangen">Neu</button>
-      <button class="btn quiet" type="button" id="projload" title="Gespeicherte Projektdatei (.json) laden">Öffnen</button>
-      <button class="btn quiet" type="button" id="projsave" title="Projekt als Datei sichern (.json)">Sichern</button>
       <button class="btn primary" type="button" id="goexport">Exportieren</button>
       <input class="vh" type="file" id="projfile" accept="application/json,.json" tabindex="-1" aria-hidden="true">
     </div>
@@ -172,8 +172,8 @@
         <select id="preset">
           <option value="1080x1920" data-dir="phoneScreenshots">Phone — 1080 × 1920</option>
           <option value="1242x2208" data-dir="phoneScreenshots">Phone groß — 1242 × 2208</option>
-          <option value="1200x1920" data-dir="sevenInchScreenshots">Tablet 7" — 1200 × 1920</option>
-          <option value="1600x2560" data-dir="tenInchScreenshots">Tablet 10" — 1600 × 2560</option>
+          <option value="1200x1920" data-dir="sevenInchScreenshots" data-device="tablet">Tablet 7" — 1200 × 1920</option>
+          <option value="1600x2560" data-dir="tenInchScreenshots" data-device="tablet">Tablet 10" — 1600 × 2560</option>
         </select>
       </div>
       <label class="check" for="pano">
@@ -437,6 +437,7 @@
       <p class="lead">Die Zeichenzahlen sind harte Limits der Play Console. Die Sprache wechselst du oben rechts.</p>
       <div class="importbar">
         <span>Schon ein Eintrag vorhanden?</span>
+        <button class="linkbtn" type="button" id="pullplay" hidden title="Lädt die aktuellen Store-Texte aller Sprachen für den Paketnamen unten">Aus Play laden</button>
         <button class="linkbtn" type="button" id="importzip">ZIP importieren</button>
         <button class="linkbtn" type="button" id="importdir">Fastlane-Ordner importieren</button>
         <input class="vh" type="file" id="importzipfile" accept=".zip,application/zip" tabindex="-1" aria-hidden="true">
@@ -565,6 +566,18 @@
 </section>
 
 </main>
+
+<dialog class="dialog wide" id="projectdialog" aria-labelledby="projectdialogtitle">
+  <h2 id="projectdialogtitle">Projekte</h2>
+  <p class="lead">Jedes Projekt ist ein Store-Eintrag mit eigenen Bildern, Texten und Sprachen. Projekte liegen in diesem Browser; zum Weitergeben als Datei sichern.</p>
+  <ul class="projectlist" id="projectlist"></ul>
+  <div class="dialogbar">
+    <button class="btn primary" type="button" id="projnew">Neues Projekt</button>
+    <button class="btn" type="button" id="projload" title="Gespeicherte Projektdatei (.json) als weiteres Projekt öffnen">Projektdatei öffnen</button>
+    <button class="btn" type="button" id="projsave" title="Das geöffnete Projekt als Datei sichern (.json)">Als Datei sichern</button>
+    <button class="btn quiet" type="button" id="projclose">Schließen</button>
+  </div>
+</dialog>
 
 <dialog class="dialog" id="langdialog" aria-labelledby="langdialogtitle">
   <h2 id="langdialogtitle">Sprachen im Projekt</h2>

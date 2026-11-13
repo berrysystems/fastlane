@@ -68,7 +68,7 @@ Der Workflow prüft die Dateien zuerst lokal (`--check`) und bricht ab, bevor
 überhaupt Zugangsdaten angefasst werden, wenn etwas nicht passt.
 
 Das Tool speichert den Stand automatisch im Browser. Die Projektdatei
-(`*-projekt.json`, über *Sichern*) kannst du zusätzlich mit ins Repo legen —
+(`*-projekt.json`, über *Projekt → Als Datei sichern*) kannst du zusätzlich mit ins Repo legen —
 dann fängt auch ein anderer Rechner beim nächsten Release nicht bei null an.
 
 

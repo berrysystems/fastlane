@@ -9,12 +9,15 @@
 #   ACCESS_TEAM_DOMAIN   z. B. meinteam.cloudflareaccess.com
 #   ACCESS_AUD           AUD-Tag der Access-Anwendung, mehrere mit Komma
 #   SITE_HOST            Adresse der Seite, z. B. fastlane.example.com
+#   PLAY_IN_WERKBANK     "true" schaltet den Abruf aus Play in der Werkbank frei
 set -euo pipefail
 
 project="${PAGES_PROJECT:-fastlane}"
 team="${ACCESS_TEAM_DOMAIN:-}"
 aud="${ACCESS_AUD:-}"
 host="${SITE_HOST:-}"
+play_api=""
+if [[ "${PLAY_IN_WERKBANK:-}" == "true" ]]; then play_api="on"; fi
 out="${1:-wrangler.toml}"
 
 # Die Werte landen in einer Konfigurationsdatei. Alles außer den hier
@@ -42,9 +45,10 @@ compatibility_date = "2026-01-01"
 ACCESS_TEAM_DOMAIN = "$team"
 ACCESS_AUD = "$aud"
 ALLOWED_HOSTS = "$host"
+PLAY_API = "$play_api"
 TOML
 
 if [[ -z "$team" || -z "$aud" || -z "$host" ]]; then
   echo "::warning::Zugangsschutz noch nicht eingerichtet (ACCESS_TEAM_DOMAIN, ACCESS_AUD oder SITE_HOST fehlt). Die Seite wird ausgeliefert, bleibt aber für alle geschlossen. Siehe ZUGANG.md."
 fi
-echo "wrangler.toml geschrieben für Projekt \"$project\"."
+echo "wrangler.toml geschrieben für Projekt \"$project\" (Abruf aus Play: ${play_api:-aus})."

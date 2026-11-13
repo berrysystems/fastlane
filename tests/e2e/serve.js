@@ -19,7 +19,22 @@ const worker = import("../../docs/_worker.js");
 
 http.createServer(async (req, res) => {
   const { SECURITY_HEADERS, USER_COOKIE } = (await worker).default.internals;
-  const urlPath = decodeURIComponent(new URL(req.url, "http://localhost").pathname);
+  const url = new URL(req.url, "http://localhost");
+  // Nachgestellter Abruf aus Play: eine bekannte App, sonst die Meldungen des echten Servers.
+  if (url.pathname === "/api/listing") {
+    const pkg = url.searchParams.get("package");
+    const reply = (status, body) => {
+      res.writeHead(status, { ...SECURITY_HEADERS, "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(JSON.stringify(body));
+    };
+    if (req.headers["x-werkbank"] !== "1") return reply(403, { error: "Dieser Aufruf ist nur aus der Werkbank möglich." });
+    if (pkg !== "de.beispiel.tagwerk") return reply(404, { error: "Diese App gibt es im Play-Konto nicht. Prüfe den Paketnamen." });
+    return reply(200, { package: pkg, listings: [
+      { language: "de-DE", title: "Tagwerk", shortDescription: "Plane deinen Tag in Minuten.", fullDescription: "Der Eintrag aus dem Store." },
+      { language: "en-US", title: "Dayworks", shortDescription: "Plan your day in minutes.", fullDescription: "The listing from the store." },
+    ] });
+  }
+  const urlPath = decodeURIComponent(url.pathname);
   const file = path.join(ROOT, urlPath.endsWith("/") ? urlPath + "index.html" : urlPath);
   // Nichts außerhalb von docs/ ausliefern.
   if (file !== ROOT && !file.startsWith(ROOT + path.sep)) { res.writeHead(403).end(); return; }

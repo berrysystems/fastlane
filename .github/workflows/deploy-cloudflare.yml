@@ -51,9 +51,11 @@ jobs:
 
       - name: Konfiguration schreiben
         env:
-          ACCESS_TEAM_DOMAIN: ${{ vars.ACCESS_TEAM_DOMAIN }}
-          ACCESS_AUD: ${{ vars.ACCESS_AUD }}
-          SITE_HOST: ${{ vars.SITE_HOST }}
+          # Als Variable oder als Secret angelegt — beides wird gelesen.
+          ACCESS_TEAM_DOMAIN: ${{ vars.ACCESS_TEAM_DOMAIN || secrets.ACCESS_TEAM_DOMAIN }}
+          ACCESS_AUD: ${{ vars.ACCESS_AUD || secrets.ACCESS_AUD }}
+          SITE_HOST: ${{ vars.SITE_HOST || secrets.SITE_HOST }}
+          PLAY_IN_WERKBANK: ${{ vars.PLAY_IN_WERKBANK || secrets.PLAY_IN_WERKBANK }}
         run: tools/deploy/write-wrangler-config.sh
 
       - name: Projekt anlegen, falls es noch fehlt

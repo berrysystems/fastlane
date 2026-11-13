@@ -157,3 +157,127 @@ test("fällt der Schlüsselabruf aus, bleibt die Seite zu", async () => {
   const res = await call({ headers: { "Cf-Access-Jwt-Assertion": await token() } });
   assert.equal(res.status, 403);
 });
+
+/* ------------------------------------------------------------------ *
+ * Abruf aus Play — mit nachgestelltem Google
+ * ------------------------------------------------------------------ */
+
+const { generateKeyPairSync, createVerify } = await import("node:crypto");
+const google = generateKeyPairSync("rsa", { modulusLength: 2048, privateKeyEncoding: { type: "pkcs8", format: "pem" }, publicKeyEncoding: { type: "spki", format: "pem" } });
+const SERVICE_KEY = JSON.stringify({ type: "service_account", client_email: "dienst@projekt.iam.gserviceaccount.com", private_key: google.privateKey, private_key_id: "kid-1" });
+const PLAY_ENV = { ...ENV, PLAY_API: "on", GOOGLE_SERVICE_ACCOUNT_KEY: SERVICE_KEY };
+
+// Antwortet wie Google: Token-Tausch, Edit anlegen, Listings, Edit löschen.
+function fakeGoogle({ editStatus = 200, listings = [{ language: "de-DE", title: "Tagwerk", shortDescription: "Kurz.", fullDescription: "Lang.", video: "x" }] } = {}) {
+  const calls = [];
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input), method = init.method || "GET";
+    calls.push(`${method} ${url.replace(/^https:\/\/[^/]+/, "")}`);
+    if (url.endsWith("/cdn-cgi/access/certs")) return Response.json({ keys: [access.jwk] });
+    if (url === "https://oauth2.googleapis.com/token") {
+      // Die Anmeldung muss mit dem Schlüssel des Dienstkontos signiert sein.
+      const assertion = new URLSearchParams(init.body).get("assertion");
+      const [head, body, signature] = assertion.split(".");
+      const ok = createVerify("RSA-SHA256").update(`${head}.${body}`).verify(google.publicKey, Buffer.from(signature, "base64url"));
+      const claims = JSON.parse(Buffer.from(body, "base64url"));
+      if (!ok || claims.scope !== "https://www.googleapis.com/auth/androidpublisher" || claims.iss !== "dienst@projekt.iam.gserviceaccount.com") {
+        return Response.json({ error: "invalid_grant" }, { status: 400 });
+      }
+      return Response.json({ access_token: "google-token", expires_in: 3600 });
+    }
+    if ((init.headers || {}).Authorization !== "Bearer google-token") return new Response("", { status: 401 });
+    if (method === "POST" && url.endsWith("/edits")) return editStatus === 200 ? Response.json({ id: "edit-7" }) : new Response("", { status: editStatus });
+    if (method === "GET" && url.endsWith("/edits/edit-7/listings")) return Response.json({ listings });
+    if (method === "DELETE" && url.endsWith("/edits/edit-7")) return new Response(null, { status: 204 });
+    return new Response("", { status: 500 });
+  };
+  return calls;
+}
+const pull = async (overrides = {}) => call({
+  path: "/api/listing?package=de.beispiel.tagwerk", env: PLAY_ENV,
+  headers: { "Cf-Access-Jwt-Assertion": await token(), "X-Werkbank": "1" }, ...overrides,
+});
+
+test("Abruf: liefert die Texte, verwirft den Edit und gibt nichts sonst heraus", async () => {
+  const calls = fakeGoogle();
+  const res = await pull();
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), {
+    package: "de.beispiel.tagwerk",
+    listings: [{ language: "de-DE", title: "Tagwerk", shortDescription: "Kurz.", fullDescription: "Lang." }],
+  });
+  assert.equal(res.headers.get("Cache-Control"), "no-store");
+  assert.equal(res.headers.get("X-Content-Type-Options"), "nosniff");
+  const base = "/androidpublisher/v3/applications/de.beispiel.tagwerk/edits";
+  assert.deepEqual(calls, ["GET /cdn-cgi/access/certs", "POST /token", `POST ${base}`, `GET ${base}/edit-7/listings`, `DELETE ${base}/edit-7`]);
+});
+
+test("Abruf: das Google-Token wird wiederverwendet", async () => {
+  const calls = fakeGoogle();
+  await pull();
+  await pull();
+  assert.equal(calls.filter((c) => c === "POST /token").length, 1);
+});
+
+test("Abruf: ohne Anmeldung, ohne eigenen Header oder mit Schreibversuch gibt es nichts", async () => {
+  const calls = fakeGoogle();
+  assert.equal((await pull({ headers: { "X-Werkbank": "1" } })).status, 403);
+  assert.equal((await pull({ headers: { "Cf-Access-Jwt-Assertion": await token() } })).status, 403);
+  assert.equal((await pull({ method: "POST" })).status, 405);
+  assert.equal((await pull({ host: "fastlane-abc.pages.dev" })).status, 403);
+  assert.deepEqual(calls.filter((c) => !c.includes("certs")), []);
+});
+
+test("Abruf: nur wenn freigeschaltet und der Schlüssel brauchbar ist", async () => {
+  const calls = fakeGoogle();
+  for (const env of [
+    { ...ENV, GOOGLE_SERVICE_ACCOUNT_KEY: SERVICE_KEY },                       // nicht freigeschaltet
+    { ...ENV, PLAY_API: "on" },                                                // kein Schlüssel
+    { ...ENV, PLAY_API: "on", GOOGLE_SERVICE_ACCOUNT_KEY: "kein json" },
+    { ...ENV, PLAY_API: "on", GOOGLE_SERVICE_ACCOUNT_KEY: '{"type":"authorized_user"}' },
+  ]) {
+    const res = await pull({ env });
+    assert.equal(res.status, 501);
+    assert.match((await res.json()).error, /nicht eingerichtet/);
+  }
+  assert.deepEqual(calls.filter((c) => !c.includes("certs")), []);
+});
+
+test("Abruf: Paketname wird geprüft, bevor Google gefragt wird", async () => {
+  const calls = fakeGoogle();
+  for (const pkg of ["", "tagwerk", "de.beispiel/../../x", "de.beispiel.app?x=1", "de..app", "a.b\n"]) {
+    const res = await pull({ path: "/api/listing?package=" + encodeURIComponent(pkg) });
+    assert.equal(res.status, 400, pkg);
+  }
+  assert.deepEqual(calls.filter((c) => !c.includes("certs")), []);
+});
+
+test("Abruf: Ablehnung durch Google wird verständlich weitergegeben", async () => {
+  fakeGoogle({ editStatus: 403 });
+  let res = await pull();
+  assert.equal(res.status, 403);
+  assert.match((await res.json()).error, /Dienstkonto darf den Eintrag dieser App nicht lesen/);
+  clearKeyCache();
+  fakeGoogle({ editStatus: 404 });
+  res = await pull();
+  assert.equal(res.status, 404);
+  assert.match((await res.json()).error, /Prüfe den Paketnamen/);
+});
+
+test("Abruf: ein ungültiger Schlüssel führt zu einer klaren Meldung, nicht zu einem Absturz", async () => {
+  fakeGoogle();
+  const other = generateKeyPairSync("rsa", { modulusLength: 2048, privateKeyEncoding: { type: "pkcs8", format: "pem" }, publicKeyEncoding: { type: "spki", format: "pem" } });
+  const wrong = JSON.stringify({ ...JSON.parse(SERVICE_KEY), private_key: other.privateKey });
+  for (const key of [wrong, JSON.stringify({ ...JSON.parse(SERVICE_KEY), private_key: "kaputt" })]) {
+    clearKeyCache();
+    const res = await pull({ env: { ...PLAY_ENV, GOOGLE_SERVICE_ACCOUNT_KEY: key } });
+    assert.equal(res.status, 502);
+    assert.match((await res.json()).error, /Schlüssel ist ungültig oder widerrufen/);
+  }
+});
+
+test("unbekannte API-Pfade liefern keine Dateien aus", async () => {
+  const res = await call({ path: "/api/anderes", headers: { "Cf-Access-Jwt-Assertion": await token() } });
+  assert.equal(res.status, 404);
+  assert.equal(res.headers.get("Content-Type"), "application/json; charset=utf-8");
+});

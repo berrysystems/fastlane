@@ -22,7 +22,8 @@ Browser ──► Cloudflare Access ──► Cloudflare Pages ──► docs/_w
 - Fehlt eine Einstellung, bleibt die Seite **geschlossen**, nie offen.
 
 Projekte liegen weiterhin im Browser der jeweiligen Person. Im Team
-weitergegeben werden sie über die Projektdatei (*Sichern* / *Öffnen*).
+weitergegeben werden sie über die Projektdatei (*Projekt → Als Datei
+sichern* / *Projektdatei öffnen*).
 
 ## Einmalig einrichten
 
@@ -121,6 +122,35 @@ In einem privaten Browserfenster:
 | `https://<projekt>.pages.dev`                      | „Kein Zugriff — Diese Adresse ist gesperrt“ |
 | `https://berrysystems.github.io/fastlane/`         | nicht mehr erreichbar             |
 
+## Abruf aus Play in der Werkbank freischalten
+
+Im Schritt *Texte* kann die Werkbank die aktuellen Store-Texte einer App
+direkt laden (*Aus Play laden*). Den Abruf erledigt der Türsteher bei
+Cloudflare — der Schlüssel des Dienstkontos erreicht nie den Browser, und es
+wird nur gelesen.
+
+Freischalten in zwei Schritten:
+
+1. **Schlüssel bei Cloudflare hinterlegen** — von Hand, er wird nicht
+   automatisch dorthin kopiert. Im Pages-Projekt unter *Settings → Variables
+   and Secrets* ein **Secret** mit dem Namen `GOOGLE_SERVICE_ACCOUNT_KEY`
+   anlegen und den kompletten Inhalt der JSON-Schlüsseldatei des Dienstkontos
+   einfügen (derselbe Schlüssel wie im GitHub-Secret
+   `PLAY_SERVICE_ACCOUNT_KEY`).
+2. **Abruf einschalten** — im GitHub-Repo unter *Variables*
+   `PLAY_IN_WERKBANK` auf `true` setzen und *Seite veröffentlichen* starten.
+
+Zu bedenken:
+
+- Der Schlüssel liegt danach **zusätzlich bei Cloudflare**.
+- **Jedes eingeladene Mitglied** kann die Texte aller Apps abrufen, auf die
+  das Dienstkonto in der Play Console Zugriff hat. Veröffentlichen kann es
+  darüber nichts.
+- Wer wann welche App abruft, steht in den Logs des Pages-Projekts.
+
+Abschalten: die Variable entfernen und neu ausliefern — der Türsteher lehnt
+den Abruf dann ab. Zusätzlich das Secret im Pages-Projekt löschen.
+
 ## Jemanden einladen
 
 1. Zero Trust → die Access-Anwendung der Werkbank → Richtlinie bearbeiten.
@@ -152,7 +182,8 @@ gesichert hat, bleiben bei ihr.
   privat stellen.
 - **Gemeinsam genutzte Rechner:** Projekte liegen im Browser. Nach dem
   Abmelden sind sie für die nächste Person im selben Browserprofil sichtbar.
-  Auf geteilten Geräten vor dem Abmelden *Sichern* und dann *Neu* wählen.
+  Auf geteilten Geräten die Projekte vor dem Abmelden als Datei sichern und
+  in der Projektliste löschen.
 - **Zugangsdaten für Google Play** liegen nie in der Seite, sondern nur als
   Secret in GitHub. Wer die Werkbank benutzen darf, kann damit nichts
   veröffentlichen — das geht nur über die Workflows im Repo.
@@ -165,6 +196,9 @@ gesichert hat, bleiben bei ihr.
 | „Diese Adresse ist gesperrt“                         | Die aufgerufene Adresse steht nicht in `SITE_HOST`. |
 | „… nur für eingeladene Mitglieder“ nach erfolgreicher Anmeldung | `ACCESS_AUD` passt nicht zur Access-Anwendung, oder `ACCESS_TEAM_DOMAIN` gehört zu einem anderen Team. |
 | Kein Code kommt an                                   | Die Adresse steht nicht in der Richtlinie, oder die Mail liegt im Spam. |
+| *Aus Play laden* fehlt                               | Der Knopf erscheint nur auf der geschützten Seite, nicht lokal. |
+| „Der Abruf aus Play ist … nicht eingerichtet“        | `PLAY_IN_WERKBANK` ist nicht `true`, oder das Secret `GOOGLE_SERVICE_ACCOUNT_KEY` fehlt im Pages-Projekt. Danach neu ausliefern. |
+| „Das Dienstkonto darf den Eintrag … nicht lesen“     | In der Play Console fehlt dem Dienstkonto die Berechtigung für diese App. |
 
 ## Offizielle Anleitungen
 
