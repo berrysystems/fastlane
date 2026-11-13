@@ -47,7 +47,8 @@ jobs:
       - name: Hochladen
         env:
           GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.PLAY_SERVICE_ACCOUNT_KEY }}
-          PACKAGE_NAME: ${{ vars.PACKAGE_NAME }}
+          # Als Variable oder als Secret angelegt — beides wird gelesen.
+          PACKAGE_NAME: ${{ vars.PACKAGE_NAME || secrets.PACKAGE_NAME }}
           # Eingaben über die Umgebung statt direkt ins Skript — so kann kein
           # Wert als Shell-Code landen.
           TRACK: ${{ inputs.track }}

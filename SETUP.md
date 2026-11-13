@@ -45,6 +45,9 @@ HTML-Datei funktioniert aber genauso per Doppelklick vom eigenen Rechner.
 Den Schlüssel als Secret anlegen, nicht als Variable — Variablen sind in
 Logs sichtbar.
 
+Der Paketname darf auch als Secret `PACKAGE_NAME` angelegt sein; die
+Workflows lesen beides. Er erscheint dann in den Logs als `***`.
+
 ## Mit einem bestehenden Eintrag anfangen
 
 1. *Actions → Play-Listing herunterladen → Run workflow*

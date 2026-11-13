@@ -142,7 +142,7 @@ sonst sammeln sich alte Screenshots im Eintrag an.
 `.github/workflows/publish-listing.yml` ist vorbereitet. Es erwartet:
 
 - Secret `PLAY_SERVICE_ACCOUNT_KEY` — der komplette JSON-Inhalt
-- Variable `PACKAGE_NAME`
+- Variable `PACKAGE_NAME` (ein gleichnamiges Secret geht auch)
 
 `.github/workflows/pull-listing.yml` nutzt dieselben Angaben und lädt nur
 herunter.
