@@ -55,7 +55,7 @@ cp .env.example .env
 
 Dann den Schlüssel in `.env` eintragen. Das Skript liest die Datei selbst —
 aus dem aktuellen Verzeichnis und aus `tools/play-publish/`. Variablen, die in
-der Umgebung schon gesetzt sind, haben Vorrang. Braucht Node 20 oder neuer.
+der Umgebung schon gesetzt sind, haben Vorrang. Braucht Node 22 oder neuer.
 
 ## Benutzen
 
@@ -142,7 +142,7 @@ sonst sammeln sich alte Screenshots im Eintrag an.
 `.github/workflows/publish-listing.yml` ist vorbereitet. Es erwartet:
 
 - Secret `PLAY_SERVICE_ACCOUNT_KEY` — der komplette JSON-Inhalt
-- Variable `PACKAGE_NAME`
+- Variable `PACKAGE_NAME` (ein gleichnamiges Secret geht auch)
 
 `.github/workflows/pull-listing.yml` nutzt dieselben Angaben und lädt nur
 herunter.

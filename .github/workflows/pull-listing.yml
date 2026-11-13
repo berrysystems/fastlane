@@ -32,7 +32,8 @@ jobs:
       - name: Herunterladen
         env:
           GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.PLAY_SERVICE_ACCOUNT_KEY }}
-          PACKAGE_NAME: ${{ vars.PACKAGE_NAME }}
+          # Als Variable oder als Secret angelegt — beides wird gelesen.
+          PACKAGE_NAME: ${{ vars.PACKAGE_NAME || secrets.PACKAGE_NAME }}
         run: node publish.js --pull --metadata "$RUNNER_TEMP/listing/fastlane/metadata/android"
 
       - uses: actions/upload-artifact@v4

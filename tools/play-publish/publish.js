@@ -303,34 +303,45 @@ function validateLocale(data, { texts = true, images = true } = {}) {
  * Zugangsdaten
  * ------------------------------------------------------------------ */
 
-function buildAuth(google, keyFlag) {
-  const scopes = ["https://www.googleapis.com/auth/androidpublisher"];
+/**
+ * Liest den Service-Account-Schlüssel. Reihenfolge: --key, dann
+ * GOOGLE_SERVICE_ACCOUNT_KEY (Inhalt), dann GOOGLE_APPLICATION_CREDENTIALS (Pfad).
+ */
+function readCredentials(keyFlag, env = process.env) {
+  let text, source;
+  const inline = (env.GOOGLE_SERVICE_ACCOUNT_KEY || "").trim();
+  const file = keyFlag || (inline ? null : env.GOOGLE_APPLICATION_CREDENTIALS);
+  if (file) {
+    if (!fs.existsSync(file)) throw new UsageError(`Schlüsseldatei nicht gefunden: ${file}`);
+    text = fs.readFileSync(file, "utf8");
+    source = file;
+  } else if (inline) {
+    text = inline;
+    source = "GOOGLE_SERVICE_ACCOUNT_KEY";
+  } else {
+    throw new UsageError(
+      "Keine Zugangsdaten. Setze GOOGLE_SERVICE_ACCOUNT_KEY (JSON-Inhalt) " +
+        "oder GOOGLE_APPLICATION_CREDENTIALS (Pfad), oder nutze --key.\n" +
+        "Nur lokal prüfen geht ohne: --check"
+    );
+  }
+  let credentials;
+  try { credentials = JSON.parse(text); }
+  catch { throw new UsageError(`${source} enthält kein gültiges JSON. Erwartet wird der komplette Inhalt der Schlüsseldatei.`); }
+  if (!credentials || !credentials.client_email || !credentials.private_key) {
+    throw new UsageError(`${source} ist kein Service-Account-Schlüssel (client_email oder private_key fehlt).`);
+  }
+  return credentials;
+}
 
-  // Ein ausdrücklich übergebener Pfad gewinnt gegen die Umgebung.
-  if (keyFlag) {
-    if (!fs.existsSync(keyFlag)) throw new UsageError(`Schlüsseldatei nicht gefunden: ${keyFlag}`);
-    return new google.auth.GoogleAuth({ keyFile: keyFlag, scopes });
-  }
-  const inline = (process.env.GOOGLE_SERVICE_ACCOUNT_KEY || "").trim();
-  if (inline) {
-    let credentials;
-    try { credentials = JSON.parse(inline); }
-    catch { throw new UsageError("GOOGLE_SERVICE_ACCOUNT_KEY enthält kein gültiges JSON. Erwartet wird der komplette Inhalt der Schlüsseldatei."); }
-    if (!credentials.client_email || !credentials.private_key) {
-      throw new UsageError("GOOGLE_SERVICE_ACCOUNT_KEY ist kein Service-Account-Schlüssel (client_email oder private_key fehlt).");
-    }
-    return new google.auth.GoogleAuth({ credentials, scopes });
-  }
-  const keyFile = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  if (keyFile) {
-    if (!fs.existsSync(keyFile)) throw new UsageError(`Schlüsseldatei nicht gefunden: ${keyFile}`);
-    return new google.auth.GoogleAuth({ keyFile, scopes });
-  }
-  throw new UsageError(
-    "Keine Zugangsdaten. Setze GOOGLE_SERVICE_ACCOUNT_KEY (JSON-Inhalt) " +
-      "oder GOOGLE_APPLICATION_CREDENTIALS (Pfad), oder nutze --key.\n" +
-      "Nur lokal prüfen geht ohne: --check"
-  );
+function buildAuth(google, keyFlag) {
+  const credentials = readCredentials(keyFlag);
+  return new google.auth.JWT({
+    email: credentials.client_email,
+    key: credentials.private_key,
+    keyId: credentials.private_key_id,
+    scopes: ["https://www.googleapis.com/auth/androidpublisher"],
+  });
 }
 
 /* ------------------------------------------------------------------ *
@@ -586,4 +597,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { readImageInfo, validateLocale, readLocale, collectLocales, loadEnvFile, pullListings, IMAGE_RULES };
+module.exports = { readImageInfo, validateLocale, readLocale, collectLocales, loadEnvFile, pullListings, readCredentials, IMAGE_RULES };
