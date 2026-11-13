@@ -1,0 +1,43 @@
+name: Play-Listing herunterladen
+
+# Holt die Texte des bestehenden Store-Eintrags und stellt sie als Download
+# bereit. Das ZIP lässt sich in der Werkbank unter Texte → „ZIP importieren“
+# einlesen. Im Store und im Repo ändert sich dabei nichts.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: tools/play-publish
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tools/play-publish/package-lock.json
+
+      - name: Abhängigkeiten
+        run: npm ci --no-audit --no-fund
+
+      - name: Herunterladen
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.PLAY_SERVICE_ACCOUNT_KEY }}
+          PACKAGE_NAME: ${{ vars.PACKAGE_NAME }}
+        run: node publish.js --pull --metadata "$RUNNER_TEMP/listing/fastlane/metadata/android"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: play-listing
+          path: ${{ runner.temp }}/listing
+          if-no-files-found: error
+          retention-days: 7

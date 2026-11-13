@@ -1,0 +1,73 @@
+name: Prüfen
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tools/play-publish/package-lock.json
+
+      - name: Abhängigkeiten
+        working-directory: tools/play-publish
+        run: npm ci --no-audit --no-fund
+
+      - name: Tests des Upload-Skripts
+        working-directory: tools/play-publish
+        run: npm test
+
+      - name: Syntax des Browser-Tools
+        run: node --check docs/assets/app.js
+
+  browser:
+    name: Browser-Tests (${{ matrix.browser }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    defaults:
+      run:
+        working-directory: tests/e2e
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tests/e2e/package-lock.json
+
+      - name: Abhängigkeiten
+        run: npm ci --no-audit --no-fund
+
+      - name: Browser installieren
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Tests
+        run: npx playwright test --project=${{ matrix.browser }}
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-${{ matrix.browser }}
+          path: tests/e2e/playwright-report
+          retention-days: 7

@@ -43,14 +43,27 @@ versuchen.
 
 ```bash
 cd tools/play-publish
-npm install
-cp .env.example .env      # und den Schlüssel eintragen
 ```
+
+```bash
+npm ci
+```
+
+```bash
+cp .env.example .env
+```
+
+Dann den Schlüssel in `.env` eintragen. Das Skript liest die Datei selbst —
+aus dem aktuellen Verzeichnis und aus `tools/play-publish/`. Variablen, die in
+der Umgebung schon gesetzt sind, haben Vorrang. Braucht Node 20 oder neuer.
 
 ## Benutzen
 
 ```bash
-# Erst prüfen — validiert lokal und bei Google, committet nichts
+# Nur lokal prüfen — ohne Zugangsdaten, ohne Netzwerk
+node publish.js --check
+
+# Probelauf — validiert zusätzlich bei Google, committet nichts
 node publish.js --package com.example.app --dry-run
 
 # Nur den Store-Eintrag aktualisieren
@@ -64,17 +77,44 @@ node publish.js --package com.example.app \
 
 Weitere Optionen zeigt `node publish.js --help`.
 
+## Bestehenden Eintrag herunterladen
+
+Gibt es die App schon im Store, holt `--pull` die Texte aller Sprachen in die
+Fastlane-Struktur — als Ausgangspunkt statt eines leeren Blatts:
+
+```bash
+node publish.js --package com.example.app --pull
+```
+
+Im Store ändert sich dabei nichts. Weichen lokale Dateien vom Store ab, bricht
+das Skript ab und nennt sie; `--force` überschreibt, `--metadata <ordner>` lädt
+woandershin. Bilder werden nicht geladen — die fertigen Store-Screenshots
+taugen nicht als Rohmaterial.
+
+Danach in der Werkbank unter *Texte → Fastlane-Ordner importieren* den Ordner
+`fastlane` wählen. Ohne lokales Node geht dasselbe über den Workflow
+*Play-Listing herunterladen*: er stellt ein ZIP bereit, das sich mit
+*ZIP importieren* einlesen lässt.
+
+Das Metadatenverzeichnis wird relativ zum Aufrufort gesucht, sonst im
+Repo-Wurzelverzeichnis. Beide Aufrufe funktionieren also gleich:
+`node publish.js …` in diesem Ordner und `node tools/play-publish/publish.js …`
+von oben.
+
 ## Was vorher geprüft wird
 
 Bevor überhaupt ein Request rausgeht, liest das Skript die Bildheader und die
 Textlängen. Das fängt die Fehler ab, die Google sonst erst nach dem Upload mit
 einer knappen Meldung quittiert:
 
-- Icon exakt 512 × 512 und unter 1 MB
-- Feature Graphic exakt 1024 × 500
-- Screenshots zwischen 320 und 3840 px, Seitenverhältnis höchstens 2:1, ohne Alphakanal
+- Icon als PNG, exakt 512 × 512 und unter 1 MB
+- Feature Graphic exakt 1024 × 500, ohne Alphakanal
+- Screenshots zwischen 320 und 3840 px, Seitenverhältnis höchstens 2:1,
+  ohne Alphakanal, höchstens 8 MB
 - mindestens 2 und höchstens 8 Phone-Screenshots
-- Titel 30, Kurzbeschreibung 80, Beschreibung 4000 Zeichen
+- Titel 30, Kurzbeschreibung 80, Beschreibung 4000, Änderungshinweise 500 Zeichen
+
+Ordner, deren Name kein Sprachcode ist, werden übersprungen und gemeldet.
 
 ## Erwartete Ordnerstruktur
 
@@ -104,8 +144,21 @@ sonst sammeln sich alte Screenshots im Eintrag an.
 - Secret `PLAY_SERVICE_ACCOUNT_KEY` — der komplette JSON-Inhalt
 - Variable `PACKAGE_NAME`
 
+`.github/workflows/pull-listing.yml` nutzt dieselben Angaben und lädt nur
+herunter.
+
 Der Workflow läuft manuell über *Actions → Run workflow*, standardmäßig als
 Probelauf. Erst wenn du den Haken entfernst, wird veröffentlicht.
+
+## Tests
+
+```bash
+npm test
+```
+
+Die Tests prüfen die lokale Validierung, das Einlesen der `.env` und das
+Herunterladen gegen eine nachgestellte API — ohne Netzwerk und ohne
+Zugangsdaten.
 
 ## Grenzen
 

@@ -13,29 +13,46 @@ on:
         default: true
         type: boolean
 
+# Der Job liest nur das Repo. Der Zugriff auf Play läuft über das Secret.
+permissions:
+  contents: read
+
+# Zwei gleichzeitige Uploads würden sich gegenseitig den Edit zerschießen.
+concurrency:
+  group: publish-listing
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: tools/play-publish
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
-          cache-dependency-path: tools/play-publish/package.json
+          cache-dependency-path: tools/play-publish/package-lock.json
 
       - name: Abhängigkeiten
-        working-directory: tools/play-publish
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
+
+      - name: Lokal prüfen
+        run: node publish.js --check
 
       - name: Hochladen
-        working-directory: tools/play-publish
         env:
           GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.PLAY_SERVICE_ACCOUNT_KEY }}
           PACKAGE_NAME: ${{ vars.PACKAGE_NAME }}
+          # Eingaben über die Umgebung statt direkt ins Skript — so kann kein
+          # Wert als Shell-Code landen.
+          TRACK: ${{ inputs.track }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          node publish.js \
-            --metadata ../../fastlane/metadata/android \
-            --track "${{ inputs.track }}" \
-            ${{ inputs.dry_run && '--dry-run' || '' }}
+          args=(--track "$TRACK")
+          if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
+          node publish.js "${args[@]}"

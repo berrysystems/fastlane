@@ -1,0 +1,16 @@
+{
+  "name": "listing-werkbank-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Browser-Tests für die Listing-Werkbank in docs/.",
+  "license": "UNLICENSED",
+  "scripts": {
+    "test": "playwright test",
+    "test:chromium": "playwright test --project=chromium",
+    "serve": "node serve.js"
+  },
+  "engines": { "node": ">=20" },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}
