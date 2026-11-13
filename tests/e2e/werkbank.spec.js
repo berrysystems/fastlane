@@ -406,6 +406,7 @@ test("Autosave überlebt das Neuladen, Projektdatei stellt alles wieder her", as
   await expect(page.locator(".noterow input").nth(0)).toHaveValue("Startseite");
   await expect(page.locator(".shotrow").nth(1).locator(".shotopts select")).toHaveValue("bleed");
 
+  await page.locator("#projectbtn").click();
   const [download] = await Promise.all([page.waitForEvent("download"), page.locator("#projsave").click()]);
   expect(download.suggestedFilename()).toBe("tagwerk-projekt.json");
   const file = await download.path();
@@ -413,8 +414,10 @@ test("Autosave überlebt das Neuladen, Projektdatei stellt alles wieder her", as
   expect(data.version).toBe(4);
   expect(data.shots[0].image).toMatch(/^data:image\/png;base64,/);
 
-  page.once("dialog", (d) => d.accept());
+  // „Neues Projekt“ verwirft nichts: das bisherige bleibt in der Liste.
   await page.locator("#projnew").click();
+  await expect(page.locator("#projectdialog")).toBeHidden();
+  await expect(page.locator("#projectname")).toHaveText("Neues Projekt");
   await expect(page.locator(".shotrow")).toHaveCount(0);
   await expect(page.locator("#mTitle")).toHaveValue("");
   await expect(page.locator("#bg2")).toHaveValue("#5b3df5");
@@ -478,4 +481,158 @@ test("läuft auch per Doppelklick von der Festplatte", async ({ page, browserNam
   await expect(page.locator("#userbox")).toBeHidden();
   const { files } = await downloadZip(page, "#dlall");
   expect(files).toEqual(["screenshot-01.jpg", "screenshot-02.jpg"]);
+});
+
+test("Projekte: mehrere nebeneinander, wechseln, löschen — und nach dem Neuladen noch da", async ({ page }) => {
+  await open(page);
+  await expect(page.locator("#projectname")).toHaveText("Neues Projekt");
+
+  // Ein leeres Projekt wird nicht vervielfacht.
+  await page.locator("#projectbtn").click();
+  await expect(page.locator("#projectlist li")).toHaveCount(1);
+  await page.locator("#projnew").click();
+  await expect(page.locator(".toast")).toContainText("noch leer");
+
+  // Projekt A
+  await addShots(page, 2);
+  await captions(page).nth(0).fill("Caption A");
+  await fillTexts(page, { title: "App A" });
+  await page.locator("#mPackage").fill("de.beispiel.a");
+  await expect(page.locator("#projectname")).toHaveText("App A");
+  await settle(page);
+
+  // Projekt B
+  await page.locator("#projectbtn").click();
+  await page.locator("#projnew").click();
+  await expect(page.locator("#projectname")).toHaveText("Neues Projekt");
+  await expect(page.locator(".shotrow")).toHaveCount(0);
+  await expect(page.locator("#undo")).toBeDisabled();
+  await fillTexts(page, { title: "App B", short: "Kurz B.", full: "Lang B." });
+  await addShots(page, 3);
+  await settle(page);
+
+  await page.locator("#projectbtn").click();
+  await expect(page.locator("#projectlist li")).toHaveCount(2);
+  await expect(page.locator("#projectlist li.active")).toContainText("App B");
+  await expect(page.locator("#projectlist li", { hasText: "App A" })).toContainText("de.beispiel.a · 2 Screenshots");
+
+  // Zurück zu A: alles wieder da.
+  await page.getByRole("button", { name: "App A öffnen" }).click();
+  await expect(page.locator("#projectdialog")).toBeHidden();
+  await expect(page.locator("#projectname")).toHaveText("App A");
+  await expect(page.locator(".shotrow")).toHaveCount(2);
+  await expect(captions(page).nth(0)).toHaveValue("Caption A");
+  await expect(page.locator("#mPackage")).toHaveValue("de.beispiel.a");
+  await expect(page.locator("#mTitle")).toHaveValue("App A");
+
+  // Das aktive Projekt und die Liste überleben das Neuladen.
+  await settle(page);
+  await page.reload();
+  await page.waitForSelector("html[data-ready]");
+  await expect(page.locator("#projectname")).toHaveText("App A");
+  await page.locator("#projectbtn").click();
+  await expect(page.locator("#projectlist li")).toHaveCount(2);
+
+  // Das geöffnete Projekt löschen: die Werkbank wechselt zum verbliebenen.
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: "App A löschen" }).click();
+  await expect(page.locator("#projectname")).toHaveText("App B");
+  await expect(page.locator("#projectlist li")).toHaveCount(1);
+  await expect(page.locator(".shotrow")).toHaveCount(3);
+  await page.locator("#projclose").click();
+  await page.locator("#tab-text").click();
+  await expect(page.locator("#mShort")).toHaveValue("Kurz B.");
+});
+
+test("Stand aus der Zeit mit nur einem Projekt wird übernommen", async ({ page }) => {
+  await open(page);
+  // Ablage so herrichten, wie die Vorversion sie hinterlassen hat.
+  await page.evaluate(() => new Promise((resolve, reject) => {
+    const req = indexedDB.open("listing-werkbank", 1);
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      const tx = req.result.transaction("project", "readwrite");
+      tx.objectStore("project").clear();
+      tx.objectStore("project").put({
+        version: 4, settings: { mPackage: "de.alt.app" }, locale: "de-DE", locales: ["de-DE"],
+        texts: { "de-DE": { mTitle: "Altbestand", mShort: "Kurz.", mFull: "Lang.", mWhats: "", ftitle: "", fsub: "", alts: [] } },
+        shots: [], logo: null, featLogo: null, font: null,
+      }, "current");
+      tx.oncomplete = () => { req.result.close(); resolve(); };
+    };
+  }));
+  await page.reload();
+  await page.waitForSelector("html[data-ready]");
+  await expect(page.locator("#projectname")).toHaveText("Altbestand");
+  await expect(page.locator("#mPackage")).toHaveValue("de.alt.app");
+  await page.locator("#projectbtn").click();
+  await expect(page.locator("#projectlist li")).toHaveCount(1);
+  expect(await page.evaluate(() => new Promise((resolve) => {
+    const req = indexedDB.open("listing-werkbank", 1);
+    req.onsuccess = () => {
+      const get = req.result.transaction("project").objectStore("project").getAllKeys();
+      get.onsuccess = () => resolve(get.result.map((k) => (k.startsWith("p:") ? "p:…" : k)).sort());
+    };
+  }))).toEqual(["meta", "p:…"]);
+});
+
+test("Aus Play laden: füllt die Texte aller Sprachen, Fehler bleiben verständlich", async ({ page }) => {
+  await open(page);
+  await page.locator("#tab-text").click();
+  await expect(page.locator("#pullplay")).toBeVisible();
+
+  // Ohne Paketnamen geht nichts an den Server.
+  await page.locator("#pullplay").click();
+  await expect(page.locator(".toast.error")).toContainText("Paketnamen");
+
+  // Die Konsole meldet den 404 der unbekannten App — das ist hier gewollt.
+  await page.locator("#mPackage").fill("de.beispiel.unbekannt");
+  await page.locator("#pullplay").click();
+  await expect(page.locator(".toast.error").last()).toContainText("Prüfe den Paketnamen");
+  test.info().problems.length = 0;
+
+  await page.locator("#mPackage").fill("de.beispiel.tagwerk");
+  await page.locator("#pullplay").click();
+  await expect(page.locator(".toast").last()).toContainText("aus Play geladen: de-DE, en-US");
+  await expect(page.locator("#mTitle")).toHaveValue("Tagwerk");
+  await expect(page.locator("#mFull")).toHaveValue("Der Eintrag aus dem Store.");
+  await expect(page.locator("#langswitch option")).toHaveCount(2);
+  await page.locator("#langswitch").selectOption("en-US");
+  await expect(page.locator("#mTitle")).toHaveValue("Dayworks");
+  await expect(page.locator("#projectname")).toHaveText("Dayworks");
+
+  // Ein Schritt zurück stellt den Stand vor dem Abruf wieder her.
+  await settle(page);
+  await page.locator("#undo").click();
+  await expect(page.locator("#langswitch option")).toHaveCount(1);
+  await expect(page.locator("#mTitle")).toHaveValue("");
+});
+
+test("Tablet-Formate bekommen einen Tablet-Rahmen", async ({ page }) => {
+  await open(page);
+  await addShots(page, 2);
+  // Rand des Geräts: beim Handy schmal und hoch, beim Tablet breiter und niedriger.
+  const deviceBox = () => page.evaluate(() => {
+    const canvas = document.querySelector("#sheet canvas");
+    const probe = document.createElement("canvas");
+    probe.width = canvas.width; probe.height = canvas.height;
+    const ctx = probe.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(canvas, 0, 0);
+    // Dunkler Rahmen (#0C0F13) auf farbigem Hintergrund: erste und letzte Zeile mit Rahmenfarbe in der Bildmitte.
+    const x = Math.round(canvas.width / 2), column = ctx.getImageData(x, 0, 1, canvas.height).data;
+    let top = -1, bottom = -1;
+    for (let y = 0; y < canvas.height; y++) {
+      const dark = column[y * 4] < 30 && column[y * 4 + 1] < 30 && column[y * 4 + 2] < 40;
+      if (dark) { if (top < 0) top = y; bottom = y; }
+    }
+    return { height: (bottom - top) / canvas.height, width: canvas.width, canvasRatio: canvas.height / canvas.width };
+  });
+  const phone = await deviceBox();
+  await page.locator("#preset").selectOption("1600x2560");
+  await expect.poll(async () => (await deviceBox()).width).toBe(1600);
+  const tablet = await deviceBox();
+  // Gerät bei 76 % Breite: Handy rund 2,17 × Breite hoch, Tablet 1,6 ×.
+  expect(phone.height * phone.canvasRatio / 0.76).toBeGreaterThan(1.9);
+  expect(tablet.height * tablet.canvasRatio / 0.76).toBeGreaterThan(1.5);
+  expect(tablet.height * tablet.canvasRatio / 0.76).toBeLessThan(1.7);
 });

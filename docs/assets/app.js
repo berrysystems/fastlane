@@ -13,7 +13,11 @@
     ["#12212E", "#2F6FED"], ["#3A1C0B", "#F2711C"], ["#F5F1EA", "#D9CFC0"],
     ["#101418", "#3A424C"],
   ];
-  const RATIO = 19.5 / 9;
+  // Geräteformen. Maße sind Anteile der Gerätebreite bzw. Bildschirmhöhe.
+  const DEVICES = {
+    phone: { ratio: 19.5 / 9, radius: 0.088, bezel: 0.023, status: 0.038, crop: 0.035, hole: true, button: true, feature: 190 },
+    tablet: { ratio: 1.6, radius: 0.05, bezel: 0.036, status: 0.026, crop: 0.024, hole: false, button: false, feature: 250 },
+  };
   const DENSITIES = [["mdpi", 1], ["hdpi", 1.5], ["xhdpi", 2], ["xxhdpi", 3], ["xxxhdpi", 4]];
   const MAX_SHOTS = 8;
   const LIMITS = { mTitle: 30, mShort: 80, mFull: 4000, mWhats: 500 };
@@ -559,14 +563,19 @@
     ctx.drawImage(img, sx, srcY, sw, sh, x, y, w, h);
   }
 
+  // Zum Zielformat passend: Handy oder Tablet.
+  function device() {
+    return DEVICES[$("preset").selectedOptions[0].dataset.device] || DEVICES.phone;
+  }
+
   function drawDevice(ctx, img, cx, cy, w, rot, style, framed) {
-    const h = w * RATIO;
+    const d = device(), h = w * d.ratio;
     ctx.save();
     ctx.translate(cx, cy);
     if (rot) ctx.rotate(rot);
     const x = -w / 2, y = -h / 2;
-    const bezel = framed ? Math.max(5, w * 0.023) : 0;
-    const outerR = w * 0.088;
+    const bezel = framed ? Math.max(5, w * d.bezel) : 0;
+    const outerR = w * d.radius;
     const innerR = framed ? Math.max(3, outerR - bezel * 0.7) : outerR * 0.75;
 
     ctx.save();
@@ -581,12 +590,12 @@
     ctx.fillStyle = "#FFF"; ctx.fillRect(sx, sy, sw, sh);
     const mode = $("statusbar").value;
     let crop = parseInt($("croptop").value, 10) / 100;
-    if (mode !== "off") crop = Math.max(crop, 0.035);
+    if (mode !== "off") crop = Math.max(crop, d.crop);
     if (img) {
       drawScreen(ctx, img, sx, sy, sw, sh, crop);
       if (mode !== "off") {
         const dark = mode === "dark" || (mode === "auto" && topLuminance(img, crop) > 0.55);
-        drawStatusBar(ctx, sx, sy, sw, sh * 0.038, dark);
+        drawStatusBar(ctx, sx, sy, sw, sh * d.status, dark);
       }
     }
     const sheen = ctx.createLinearGradient(sx, sy, sx + sw * 0.7, sy + sh * 0.45);
@@ -598,10 +607,19 @@
       ctx.strokeStyle = style === "dark" ? "rgba(255,255,255,.18)" : "rgba(0,0,0,.16)";
       ctx.lineWidth = Math.max(1, w * 0.0022);
       roundRect(ctx, x, y, w, h, outerR); ctx.stroke();
-      ctx.fillStyle = "rgba(0,0,0,.82)";
-      ctx.beginPath(); ctx.arc(0, y + bezel + w * 0.042, w * 0.016, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = style === "dark" ? "#23282F" : "#C9CDD3";
-      roundRect(ctx, x + w, y + h * 0.20, w * 0.008, h * 0.075, w * 0.004); ctx.fill();
+      if (d.hole) {
+        // Handy: Kamera als Loch im Bildschirm.
+        ctx.fillStyle = "rgba(0,0,0,.82)";
+        ctx.beginPath(); ctx.arc(0, y + bezel + w * 0.042, w * 0.016, 0, Math.PI * 2); ctx.fill();
+      } else {
+        // Tablet: Kamera sitzt im Rahmen.
+        ctx.fillStyle = style === "dark" ? "#2B313A" : "#B4B9C1";
+        ctx.beginPath(); ctx.arc(0, y + bezel / 2, bezel * 0.17, 0, Math.PI * 2); ctx.fill();
+      }
+      if (d.button) {
+        ctx.fillStyle = style === "dark" ? "#23282F" : "#C9CDD3";
+        roundRect(ctx, x + w, y + h * 0.20, w * 0.008, h * 0.075, w * 0.004); ctx.fill();
+      }
     }
     ctx.restore();
   }
@@ -631,7 +649,7 @@
     const bg1 = own ? shot.bg[0] : $("bg1").value, bg2 = own ? shot.bg[1] : $("bg2").value;
     const textColor = own ? readableOn(mix(bg1, bg2, 0.5)) : $("textcolor").value;
     const frameStyle = $("frame").value, scale = parseInt($("scale").value, 10) / 100;
-    const text = caption(shot);
+    const text = caption(shot), RATIO = device().ratio;
     if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
     const ctx = canvas.getContext("2d");
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -966,7 +984,7 @@
       const glow = ctx.createRadialGradient(W * 0.80, H * 0.5, 10, W * 0.80, H * 0.5, H * 0.75);
       glow.addColorStop(0, "rgba(255,255,255,.13)"); glow.addColorStop(1, "rgba(255,255,255,0)");
       ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
-      drawDevice(ctx, state.shots[0].img, W * 0.80, H * 0.60, 190, -9 * Math.PI / 180, $("frame").value, true);
+      drawDevice(ctx, state.shots[0].img, W * 0.80, H * 0.60, device().feature, -9 * Math.PI / 180, $("frame").value, true);
       textRight = W * 0.63;
     }
     ctx.textBaseline = "top";
@@ -1421,15 +1439,21 @@
       if (slot[field] && slot[field].rank >= rank) continue;
       slot[field] = { rank, text: (await entry.read()).replace(/^﻿/, "").trim() };
     }
-    const locales = Object.keys(found).sort();
-    if (!locales.length) {
+    if (!Object.keys(found).length) {
       toast("Keine Store-Texte gefunden. Erwartet wird die Fastlane-Struktur: <Sprache>/title.txt usw.", "error");
       return;
     }
+    applyImportedTexts(Object.fromEntries(Object.entries(found).map(([locale, fields]) =>
+      [locale, Object.fromEntries(Object.entries(fields).map(([field, { text }]) => [field, text]))])), "importiert");
+  }
+
+  // found: { sprache: { mTitle, mShort, mFull, mWhats } } — nur vorhandene Felder.
+  function applyImportedTexts(found, verb) {
+    const locales = Object.keys(found).sort();
     checkpoint();
     locales.forEach((locale) => {
       ensureLocale(locale);
-      Object.entries(found[locale]).forEach(([field, { text }]) => { state.texts[locale][field] = text; });
+      Object.entries(found[locale]).forEach(([field, text]) => { state.texts[locale][field] = text; });
     });
     // Eine leere Startsprache, die im Import nicht vorkommt, stört nur.
     const isBlank = (locale) => LOCALE_FIELDS.every((id) => !state.texts[locale][id].trim()) &&
@@ -1443,7 +1467,37 @@
     renderLocaleUi();
     renderList();
     touch({ shots: true });
-    toast(`Texte importiert: ${locales.join(", ")}.`);
+    toast(`Texte ${verb}: ${locales.join(", ")}.`);
+  }
+
+  // Hinter dem Zugangsschutz gibt es einen Server-Teil, der den bestehenden
+  // Eintrag bei Google abruft. Der Schlüssel dafür liegt nur dort.
+  const hasBackend = () => /(?:^|;\s*)wb_user=/.test(document.cookie);
+  async function pullFromPlay() {
+    const pkg = $("mPackage").value.trim();
+    if (!PACKAGE_RE.test(pkg) || pkg === DEFAULTS.mPackage) {
+      toast("Trage zuerst den Paketnamen der App ein.", "error");
+      $("mPackage").focus();
+      return;
+    }
+    let res;
+    try {
+      res = await fetch("/api/listing?package=" + encodeURIComponent(pkg), {
+        headers: { "X-Werkbank": "1", Accept: "application/json" }, credentials: "same-origin", redirect: "error",
+      });
+    } catch (_) {
+      throw new Error("Keine Antwort vom Server. Ist die Anmeldung abgelaufen? Dann die Seite neu laden.");
+    }
+    let data = null;
+    try { data = await res.json(); } catch (_) { /* keine JSON-Antwort */ }
+    if (!res.ok || !data) throw new Error((data && data.error) || `Der Abruf ist fehlgeschlagen (${res.status}).`);
+    const found = {};
+    (Array.isArray(data.listings) ? data.listings : []).forEach((l) => {
+      if (!l || !LOCALE_RE.test(String(l.language || ""))) return;
+      found[l.language] = { mTitle: String(l.title || ""), mShort: String(l.shortDescription || ""), mFull: String(l.fullDescription || "") };
+    });
+    if (!Object.keys(found).length) { toast("Für diese App ist im Store noch kein Eintrag hinterlegt.", "error"); return; }
+    applyImportedTexts(found, "aus Play geladen");
   }
   async function importZip(file) {
     if (!hasZip()) throw new Error("Die ZIP-Bibliothek fehlt (assets/vendor/jszip.min.js).");
@@ -1744,10 +1798,13 @@
         });
       } finally { db.close(); }
     },
-    load() { return this.run("readonly", (s) => s.get("current")); },
-    save(value) { return this.run("readwrite", (s) => s.put(value, "current")); },
-    clear() { return this.run("readwrite", (s) => s.delete("current")); },
+    get(key) { return this.run("readonly", (s) => s.get(key)); },
+    put(key, value) { return this.run("readwrite", (s) => s.put(value, key)); },
+    del(key) { return this.run("readwrite", (s) => s.delete(key)); },
   };
+  // Schlüssel in der Ablage: "meta" (Liste und aktives Projekt) und je
+  // Projekt "p:<id>". "current" stammt aus der Zeit mit nur einem Projekt.
+  const projectKey = (id) => "p:" + id;
 
   function snapshot() {
     const c = capture();
@@ -1855,15 +1912,118 @@
 
   let saveTimer = 0, autosave = true;
   function setSaveState(text) { $("savestate").textContent = text; }
+  // ---- Projekte: mehrere Store-Einträge nebeneinander im selben Browser
+  const projects = { id: "", list: [] };   // list: [{ id, name, pkg, shots, locales, updated }]
+  const newId = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+
+  function projectName() {
+    const title = $("mTitle").value.trim() || state.texts[state.locales[0]].mTitle.trim();
+    const pkg = $("mPackage").value.trim();
+    return title || (pkg && pkg !== DEFAULTS.mPackage ? pkg : "") || "Neues Projekt";
+  }
+  function describeProject(id) {
+    const pkg = $("mPackage").value.trim();
+    return { id, name: projectName(), pkg: pkg === DEFAULTS.mPackage ? "" : pkg, shots: state.shots.length, locales: state.locales.length, updated: Date.now() };
+  }
+  // Ein unberührtes Projekt wird nicht gespeichert — sonst füllt jeder Klick
+  // auf „Neues Projekt“ die Liste mit Leerem.
+  function isBlankProject() {
+    commitLocale();
+    return !state.shots.length && !state.iconLogo && !state.featLogo && !state.font && !$("bWhat").value.trim() &&
+      state.locales.every((locale) => LOCALE_FIELDS.every((id) => !state.texts[locale][id].trim()));
+  }
+
   async function persist() {
     if (!autosave) return;
-    try { await local.save(await packSnapshot(snapshot())); setSaveState("Automatisch gespeichert"); }
+    // Alles, was dieses Projekt beschreibt, jetzt festhalten: bis das
+    // Schreiben fertig ist, kann schon ein anderes Projekt geöffnet sein.
+    const id = projects.id, blank = isBlankProject(), entry = describeProject(id);
+    try {
+      if (blank) await local.del(projectKey(id));
+      else await local.put(projectKey(id), await packSnapshot(snapshot()));
+      projects.list = [...(blank ? [] : [entry]), ...projects.list.filter((p) => p.id !== id)];
+      await local.put("meta", { active: projects.id, list: projects.list });
+      setSaveState(blank ? "" : "Automatisch gespeichert");
+      renderProjectUi();
+    }
     catch (err) {
       console.warn("Autosave fehlgeschlagen", err);
       autosave = false;
-      setSaveState("Autosave nicht möglich — bitte „Sichern“ nutzen");
+      setSaveState("Autosave nicht möglich — bitte als Datei sichern");
     }
   }
+  // Offene Eingaben sofort festhalten und speichern — vor jedem Projektwechsel.
+  async function settleNow() {
+    clearTimeout(saveTimer);
+    commitHistory();
+    await persist();
+  }
+
+  async function openProject(id) {
+    if (id === projects.id) return;
+    await settleNow();
+    const previous = projects.id;
+    try {
+      const saved = await local.get(projectKey(id));
+      if (!saved) throw new Error("fehlt");
+      projects.id = id;
+      await restore(unpackSnapshot(saved));
+    } catch (err) {
+      console.warn("Projekt nicht lesbar", err);
+      projects.id = previous;
+      toast("Dieses Projekt ließ sich nicht öffnen.", "error");
+      return;
+    }
+    await persist();
+    toast(`Projekt „${projectName()}“ geöffnet.`);
+  }
+  async function newProject() {
+    await settleNow();
+    if (isBlankProject()) { toast("Dieses Projekt ist noch leer — leg einfach los."); return; }
+    projects.id = newId();
+    await restore({ settings: DEFAULTS });
+    await persist();
+    activate("icon");
+    toast("Neues Projekt angelegt. Das vorherige findest du unter „Projekt“.");
+  }
+  async function deleteProject(id) {
+    const entry = projects.list.find((p) => p.id === id);
+    const name = id === projects.id ? projectName() : entry ? entry.name : "Projekt";
+    if (!confirm(`Projekt „${name}“ endgültig löschen? Bilder und Texte dieses Projekts gehen verloren.`)) return;
+    clearTimeout(saveTimer);
+    projects.list = projects.list.filter((p) => p.id !== id);
+    try { await local.del(projectKey(id)); } catch (_) { /* war nie gespeichert */ }
+    if (id === projects.id) {
+      // Das geöffnete Projekt ist weg: zum zuletzt benutzten wechseln, sonst leer anfangen.
+      projects.id = newId();
+      await restore({ settings: DEFAULTS });
+      if (projects.list.length) { await openProject(projects.list[0].id); return; }
+      activate("icon");
+    }
+    await persist();
+  }
+
+  function renderProjectUi() {
+    $("projectname").textContent = projectName();
+    if (!$("projectdialog").open) return;
+    const when = (time) => new Date(time).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" });
+    const details = (p) => [
+      p.pkg, `${p.shots} Screenshot${p.shots === 1 ? "" : "s"}`,
+      p.locales > 1 ? `${p.locales} Sprachen` : null, p.updated ? "zuletzt " + when(p.updated) : null,
+    ].filter(Boolean).join(" · ");
+    const current = { ...describeProject(projects.id), updated: (projects.list.find((p) => p.id === projects.id) || {}).updated };
+    const rows = [current, ...projects.list.filter((p) => p.id !== projects.id)];
+    $("projectlist").replaceChildren(...rows.map((p) => {
+      const active = p.id === projects.id;
+      return el("li", { class: active ? "active" : "" },
+        el("div", { class: "pinfo" }, el("b", { text: p.name }), el("small", { text: details(p) })),
+        active ? el("span", { class: "tag", text: "geöffnet" })
+          : el("button", { class: "btn", type: "button", text: "Öffnen", "aria-label": `${p.name} öffnen`, onclick: async () => { await openProject(p.id); $("projectdialog").close(); } }),
+        el("button", { class: "linkbtn", type: "button", text: "Löschen", "aria-label": `${p.name} löschen`, onclick: () => deleteProject(p.id) })
+      );
+    }));
+  }
+
   // Kurz warten, bis die Eingabe zur Ruhe kommt: ein Tippvorgang wird so zu
   // einem Schritt im Verlauf und zu einem Schreibvorgang.
   function markDirty() {
@@ -1886,7 +2046,10 @@
     saveBlob(new Blob([JSON.stringify(data)], { type: "application/json" }), slug + "-projekt.json");
     toast("Projektdatei gesichert.");
   }
+  // Eine Projektdatei wird immer ein weiteres Projekt — sie überschreibt nichts.
   async function loadProjectFile(file) {
+    await settleNow();
+    const previous = projects.id;
     try {
       const data = JSON.parse(await file.text());
       if (!data || typeof data !== "object" || typeof data.settings !== "object") throw new Error("Kein Projekt");
@@ -1894,27 +2057,22 @@
       if (data.font && data.font.data) {
         try { font = { name: data.font.name, blob: dataUrlToBlob(data.font.data, "font") }; } catch (_) { /* ohne Schrift weiter */ }
       }
-      await restore({
+      const snap = {
         ...data,
         shots: (Array.isArray(data.shots) ? data.shots : []).map((s) => ({ ...s, blob: dataUrlToBlob(s.image) })),
         logo: data.logo ? dataUrlToBlob(data.logo) : null,
         featLogo: data.featLogo ? dataUrlToBlob(data.featLogo) : null,
         font,
-      });
+      };
+      projects.id = newId();
+      await restore(snap);
       await persist();
-      toast("Projekt geladen.");
+      toast(`Projekt „${projectName()}“ geladen.`);
     } catch (err) {
       console.error(err);
+      projects.id = previous;
       toast("Die Datei ließ sich nicht lesen. Ist es eine mit diesem Tool gesicherte Projektdatei?", "error");
     }
-  }
-  async function newProject() {
-    if (!confirm("Alle Bilder, Texte und Einstellungen verwerfen und leer anfangen?")) return;
-    clearTimeout(saveTimer);
-    await restore({ settings: DEFAULTS });
-    try { await local.clear(); } catch (_) { /* nichts gespeichert */ }
-    setSaveState("");
-    activate("icon");
   }
 
   /* ================================================================== *
@@ -1950,6 +2108,7 @@
     renderTree();
     $("nextcmd").textContent = publishCommand();
     updateSteps();
+    renderProjectUi();
   }
 
   // Nach jeder Änderung aufrufen — egal ob durch Eingabe oder per Code.
@@ -2005,7 +2164,11 @@
   onClick("zipall", () => buildZip(true));
   onClick("zipmeta", () => buildZip(false));
   onClick("projsave", saveProjectFile);
-  onClick("projnew", newProject);
+  onClick("projnew", async () => { await newProject(); $("projectdialog").close(); });
+  onClick("pullplay", pullFromPlay);
+  $("projectbtn").addEventListener("click", () => { $("projectdialog").showModal(); renderProjectUi(); });
+  $("projclose").addEventListener("click", () => $("projectdialog").close());
+  $("projectdialog").addEventListener("click", (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
 
   // Dateiauswahl hinter einem gewöhnlichen Button.
   function pickFile(buttonId, inputId, onFiles) {
@@ -2055,7 +2218,7 @@
     const t = e.target;
     const typing = t instanceof HTMLElement &&
       (t.tagName === "TEXTAREA" || (t.tagName === "INPUT" && /^(text|search|url|email|number)$/.test(t.type)));
-    if (typing || $("langdialog").open) return;
+    if (typing || $("langdialog").open || $("projectdialog").open) return;
     e.preventDefault();
     if (key === "y" || e.shiftKey) redo(); else undo();
   });
@@ -2078,6 +2241,7 @@
 
   async function boot() {
     showUser();
+    $("pullplay").hidden = !hasBackend();
     buildSwatches();
     // Canvas zeichnet nur mit Schriften, die schon geladen sind. Kurz warten,
     // aber nie hängen bleiben, falls eine Datei fehlt.
@@ -2088,16 +2252,37 @@
         new Promise((r) => setTimeout(r, 2000)),
       ]);
     }
-    let saved = null;
-    try { saved = await local.load(); }
-    catch (_) { autosave = false; setSaveState("Autosave nicht möglich — bitte „Sichern“ nutzen"); }
+    let saved = null, migrated = false;
     try {
-      if (saved) { await restore(unpackSnapshot(saved)); setSaveState("Letzter Stand wiederhergestellt"); }
+      let meta = await local.get("meta");
+      if (!meta) {
+        // Stand aus der Zeit mit nur einem Projekt übernehmen.
+        const legacy = await local.get("current");
+        if (legacy) {
+          const id = newId();
+          await local.put(projectKey(id), legacy);
+          await local.del("current");
+          meta = { active: id, list: [] };
+          migrated = true;
+        }
+      }
+      projects.list = meta && Array.isArray(meta.list) ? meta.list.filter((p) => p && typeof p.id === "string") : [];
+      projects.id = (meta && typeof meta.active === "string" && meta.active) || newId();
+      saved = await local.get(projectKey(projects.id));
+    } catch (_) {
+      autosave = false;
+      projects.id = projects.id || newId();
+      setSaveState("Autosave nicht möglich — bitte als Datei sichern");
+    }
+    try {
+      if (saved) await restore(unpackSnapshot(saved));
     } catch (err) {
       console.warn("Gespeicherter Stand unlesbar", err);
       saved = null;
     }
     if (!saved) await restore({ settings: DEFAULTS });
+    if (migrated) await persist();
+    if (saved) setSaveState("Letzter Stand wiederhergestellt");
     activate(location.hash.slice(1) || "icon");
     document.documentElement.dataset.ready = "true";
   }

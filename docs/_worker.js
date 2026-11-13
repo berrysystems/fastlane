@@ -15,10 +15,14 @@
  *                        mehrere durch Komma getrennt
  *   ALLOWED_HOSTS        Adressen, unter denen die Seite erreichbar sein darf,
  *                        z. B. fastlane.example.com (mehrere durch Komma)
+ *
+ * Optional — Abruf des bestehenden Store-Eintrags für angemeldete Mitglieder:
+ *   PLAY_API                     "on" schaltet /api/listing frei
+ *   GOOGLE_SERVICE_ACCOUNT_KEY   Geheimnis: JSON-Schlüssel des Dienstkontos
  */
 
-// Schutz im Browser. Die Seite lädt nur eigene Dateien und spricht mit
-// keinem Server; alles andere ist verboten.
+// Schutz im Browser. Die Seite lädt nur eigene Dateien und spricht nur mit
+// ihrem eigenen Server; alles andere ist verboten.
 const SECURITY_HEADERS = {
   "Content-Security-Policy": [
     "default-src 'none'",
@@ -26,7 +30,7 @@ const SECURITY_HEADERS = {
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' blob: data:",
     "font-src 'self'",
-    "connect-src 'none'",
+    "connect-src 'self'",
     "base-uri 'none'",
     "form-action 'none'",
     "frame-ancestors 'none'",
@@ -101,7 +105,7 @@ async function findKey(team, kid, fetcher) {
   return entry.keys.get(kid) || null;
 }
 /** Nur für Tests. */
-function clearKeyCache() { keyCache.clear(); }
+function clearKeyCache() { keyCache.clear(); googleToken = null; }
 
 /**
  * Prüft ein Access-Token und gibt dessen Inhalt zurück.
@@ -142,6 +146,107 @@ function tokenFrom(request) {
 }
 
 /* ------------------------------------------------------------------ *
+ * Abruf aus Google Play
+ *
+ * Holt die Texte des bestehenden Store-Eintrags. Der Schlüssel des
+ * Dienstkontos liegt nur hier als Geheimnis und erreicht nie den Browser.
+ * Es wird ausschließlich gelesen: der dafür nötige Edit wird verworfen.
+ * ------------------------------------------------------------------ */
+
+const PACKAGE_RE = /^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/;
+const PLAY_SCOPE = "https://www.googleapis.com/auth/androidpublisher";
+const TOKEN_URL = "https://oauth2.googleapis.com/token";
+const PLAY_BASE = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/";
+
+const encodeBase64Url = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const encodeJson = (value) => encodeBase64Url(new TextEncoder().encode(JSON.stringify(value)));
+
+const json = (status, body) => new Response(JSON.stringify(body), {
+  status, headers: { "Content-Type": "application/json; charset=utf-8" },
+});
+
+function readServiceAccount(env) {
+  try {
+    const key = JSON.parse(String(env.GOOGLE_SERVICE_ACCOUNT_KEY || ""));
+    return key && key.client_email && key.private_key ? key : null;
+  } catch (_) { return null; }
+}
+
+let googleToken = null;   // { email, value, expires }
+
+async function googleAccessToken(key) {
+  if (googleToken && googleToken.email === key.client_email && googleToken.expires > Date.now() + 60000) return googleToken.value;
+  const now = Math.floor(Date.now() / 1000);
+  const unsigned = encodeJson({ alg: "RS256", typ: "JWT", kid: key.private_key_id }) + "." +
+    encodeJson({ iss: key.client_email, scope: PLAY_SCOPE, aud: TOKEN_URL, iat: now, exp: now + 3600 });
+  const pem = String(key.private_key).replace(/-----[A-Z ]+-----/g, "").replace(/\s+/g, "");
+  const privateKey = await crypto.subtle.importKey(
+    "pkcs8", Uint8Array.from(atob(pem), (c) => c.charCodeAt(0)),
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", privateKey, new TextEncoder().encode(unsigned));
+  const res = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion: unsigned + "." + encodeBase64Url(new Uint8Array(signature)),
+    }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data || !data.access_token) throw new Error("Anmeldung bei Google fehlgeschlagen");
+  googleToken = { email: key.client_email, value: data.access_token, expires: Date.now() + (Number(data.expires_in) || 3600) * 1000 };
+  return googleToken.value;
+}
+
+async function pullListing(request, url, env, claims) {
+  // Der eigene Header erzwingt bei fremden Seiten eine Vorabfrage, die hier
+  // nie beantwortet wird — eine andere Website kann den Abruf nicht auslösen.
+  if (request.headers.get("X-Werkbank") !== "1") return json(403, { error: "Dieser Aufruf ist nur aus der Werkbank möglich." });
+  if (request.method !== "GET") return json(405, { error: "Nur Lesen ist erlaubt." });
+
+  const key = env.PLAY_API === "on" ? readServiceAccount(env) : null;
+  if (!key) return json(501, { error: "Der Abruf aus Play ist auf diesem Server nicht eingerichtet. Nutze stattdessen den ZIP-Import." });
+
+  const pkg = url.searchParams.get("package") || "";
+  if (!PACKAGE_RE.test(pkg) || pkg.length > 150) return json(400, { error: "Das ist kein gültiger Paketname." });
+
+  console.log(`Play-Abruf: ${claims.email} lädt ${pkg}`);
+  let token;
+  try { token = await googleAccessToken(key); }
+  catch (_) { return json(502, { error: "Die Anmeldung des Dienstkontos bei Google ist fehlgeschlagen. Der hinterlegte Schlüssel ist ungültig oder widerrufen." }); }
+
+  const base = PLAY_BASE + encodeURIComponent(pkg) + "/edits";
+  const auth = { Authorization: "Bearer " + token };
+  const explain = (status) => status === 401 || status === 403
+    ? json(403, { error: "Das Dienstkonto darf den Eintrag dieser App nicht lesen. Prüfe die Berechtigung in der Play Console." })
+    : status === 404
+      ? json(404, { error: "Diese App gibt es im Play-Konto nicht. Prüfe den Paketnamen." })
+      : json(502, { error: `Google Play hat den Abruf abgelehnt (${status}).` });
+
+  let editId = "";
+  try {
+    const created = await fetch(base, { method: "POST", headers: auth });
+    if (!created.ok) return explain(created.status);
+    editId = (await created.json()).id;
+    const res = await fetch(`${base}/${encodeURIComponent(editId)}/listings`, { headers: auth });
+    if (!res.ok) return explain(res.status);
+    const data = await res.json();
+    return json(200, {
+      package: pkg,
+      listings: (data.listings || []).map((l) => ({
+        language: String(l.language || ""), title: String(l.title || ""),
+        shortDescription: String(l.shortDescription || ""), fullDescription: String(l.fullDescription || ""),
+      })),
+    });
+  } catch (_) {
+    return json(502, { error: "Google Play ist gerade nicht erreichbar. Bitte später noch einmal versuchen." });
+  } finally {
+    // Aufräumen ist Kür — ein liegengebliebener Edit verfällt von selbst.
+    if (editId) await fetch(`${base}/${encodeURIComponent(editId)}`, { method: "DELETE", headers: auth }).catch(() => {});
+  }
+}
+
+/* ------------------------------------------------------------------ *
  * Antworten
  * ------------------------------------------------------------------ */
 
@@ -177,6 +282,11 @@ export default {
     let claims;
     try { claims = await verifyAccessToken(tokenFrom(request), config); }
     catch (_) { return deny(403, "Die Werkbank ist nur für eingeladene Mitglieder des Teams zugänglich. Bitte melde dich an."); }
+
+    if (url.pathname === "/api/listing") {
+      return secure(await pullListing(request, url, env, claims), { "Cache-Control": "no-store" });
+    }
+    if (url.pathname.startsWith("/api/")) return secure(json(404, { error: "Unbekannter Aufruf." }), { "Cache-Control": "no-store" });
 
     if (request.method !== "GET" && request.method !== "HEAD") {
       return secure(new Response(null, { status: 405, headers: { Allow: "GET, HEAD" } }));

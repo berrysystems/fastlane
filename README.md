@@ -34,8 +34,8 @@ dem, was noch fehlt.
 2. **Screenshots** — fünf Layouts, Panorama über mehrere Frames, saubere
    Statusleiste statt der aufgenommenen. Reihenfolge per Ziehen; einzelne
    Screenshots können ein eigenes Layout und eigene Farben bekommen, die
-   Überschriften eine eigene Markenschrift. Tablet-Formate landen automatisch
-   im richtigen Ordner.
+   Überschriften eine eigene Markenschrift. Tablet-Formate bekommen einen
+   Tablet-Rahmen und landen automatisch im richtigen Ordner.
 3. **Briefing** — was die App tut, für wen, was die Screenshots zeigen.
    Daraus entsteht ein fertiger Auftrag für einen KI-Assistenten; dessen
    Antwort füllt Store-Texte, Namensalternativen und Captions für alle
@@ -43,7 +43,8 @@ dem, was noch fehlt.
    API-Schlüssel.
 4. **Texte** — Zeichenzähler auf die Limits der Console, Vorschau des
    Anrisses und eine Prüfung auf Formulierungen, die bei der Review auffallen.
-   Ein bestehender Eintrag lässt sich als ZIP oder Fastlane-Ordner importieren.
+   Ein bestehender Eintrag lässt sich als ZIP oder Fastlane-Ordner
+   importieren — auf der geschützten Seite auch direkt aus Play laden.
 5. **Feature Graphic** — 1024 × 500 mit Sicherheitsbereich. Titel und
    Untertitel kommen aus den Store-Texten, solange du nichts anderes einträgst.
 6. **Vorschau** — Icon, Titel und Screenshots zusammen, wie auf der Store-Seite.
@@ -51,6 +52,8 @@ dem, was noch fehlt.
 
 Dazu:
 
+- **Mehrere Projekte** nebeneinander (Knopf *Projekt* oben links): je
+  Store-Eintrag eines, mit Wechseln, Anlegen und Löschen.
 - **Mehrere Sprachen** in einem Projekt (Auswahl oben rechts). Jede Sprache
   hat eigene Store-Texte und Captions; der Export rendert Screenshots und
   Feature Graphic für jede Sprache und legt sie in ihren Ordner.
@@ -59,7 +62,8 @@ Dazu:
 - **Farben** aus dem Logo, mit Kontrastprüfung für Captions und Feature Graphic.
 - **Automatisches Speichern** im Browser (IndexedDB). Nach einem Neuladen ist
   der letzte Stand wieder da.
-- **Projektdatei** (`*-projekt.json`) über *Sichern* / *Öffnen* — zum
+- **Projektdatei** (`*-projekt.json`) über *Projekt → Als Datei sichern* /
+  *Projektdatei öffnen* — zum
   Mitnehmen, Weitergeben oder Einchecken. Sie enthält die Originalbilder
   unverändert. Dateien älterer Versionen werden übernommen.
 - Helles und dunkles Design folgen der Systemeinstellung.

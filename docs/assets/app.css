@@ -66,6 +66,9 @@ code{font-family:var(--mono);font-size:.86em;background:var(--surface-2);border:
 .brandmark path{fill:var(--accent-ink)}
 .brand h1{font-family:var(--display);font-weight:700;font-size:18px;letter-spacing:-.015em;line-height:1.15}
 .brand p{font-size:12.5px;color:var(--ink-2);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.projectbtn{gap:7px;max-width:300px;margin-right:auto;margin-left:6px;min-width:0}
+.projectbtn .plabel{font-size:12px;color:var(--ink-2);font-weight:400}
+.projectbtn b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .appactions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:4px;min-width:0}
 .appactions .primary{margin-left:8px}
 .userbox{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-2);margin-right:8px;padding:4px 10px;border:1px solid var(--line);border-radius:999px;white-space:nowrap;max-width:320px}
@@ -369,4 +372,23 @@ details.inline .tree{margin-top:8px;max-height:280px;overflow:auto;white-space:p
   .stepbar{flex-wrap:wrap}
   .steps{flex-basis:100%}
   .langbar{margin-left:auto}
+}
+
+/* ---------- Projekte ---------- */
+.dialog.wide{width:min(600px,calc(100vw - 32px))}
+.projectlist{list-style:none;margin-bottom:18px;border:1px solid var(--line-soft);border-radius:var(--radius);max-height:46vh;overflow-y:auto}
+.projectlist li{display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid var(--line-soft)}
+.projectlist li:last-child{border-bottom:none}
+.projectlist li.active{background:var(--accent-soft)}
+.projectlist .pinfo{flex:1;min-width:0}
+.projectlist .pinfo b{display:block;font-weight:600;font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.projectlist .pinfo small{display:block;color:var(--ink-2);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.projectlist .tag{font-size:12px;color:var(--accent);font-weight:600;flex:none}
+.projectlist .btn{min-height:32px;padding:5px 11px;flex:none}
+.projectlist .linkbtn{flex:none;color:var(--warn)}
+.dialogbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.dialogbar .quiet{margin-left:auto}
+@media (max-width:560px){
+  .projectbtn{order:3;flex:1 1 100%;max-width:none;margin:0;justify-content:flex-start}
+  .projectbtn b{flex:1;text-align:left}
 }
