@@ -21,3 +21,7 @@ Thumbs.db
 # Lokale Arbeitsdateien
 *.log
 /play-listing-*.zip
+
+# Wird beim Ausliefern erzeugt
+/wrangler.toml
+.wrangler/

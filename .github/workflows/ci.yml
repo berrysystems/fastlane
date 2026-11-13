@@ -36,6 +36,9 @@ jobs:
       - name: Syntax des Browser-Tools
         run: node --check docs/assets/app.js
 
+      - name: Tests des Zugangsschutzes
+        run: node --test tests/worker/worker.test.mjs
+
   browser:
     name: Browser-Tests (${{ matrix.browser }})
     runs-on: ubuntu-latest

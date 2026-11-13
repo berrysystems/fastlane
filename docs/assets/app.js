@@ -2064,7 +2064,20 @@
    * Start
    * ================================================================== */
 
+  // Hinter dem Zugangsschutz verrät ein Cookie, wer angemeldet ist. Lokal
+  // und ohne Schutz gibt es keins — dann bleibt die Anzeige verborgen.
+  function showUser() {
+    const match = /(?:^|;\s*)wb_user=([^;]+)/.exec(document.cookie);
+    if (!match) return;
+    let email = "";
+    try { email = decodeURIComponent(match[1]); } catch (_) { return; }
+    $("useremail").textContent = email;
+    $("userbox").title = "Angemeldet als " + email;
+    $("userbox").hidden = false;
+  }
+
   async function boot() {
+    showUser();
     buildSwatches();
     // Canvas zeichnet nur mit Schriften, die schon geladen sind. Kurz warten,
     // aber nie hängen bleiben, falls eine Datei fehlt.

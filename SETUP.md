@@ -6,32 +6,32 @@
 mein-app-repo/
 ├─ docs/
 │  ├─ index.html                     das Browser-Tool
-│  └─ assets/                        Styles, Skript, Schriften, JSZip
+│  ├─ assets/                        Styles, Skript, Schriften, JSZip
+│  └─ _worker.js                     Zugangsschutz bei Cloudflare
 ├─ tools/
-│  └─ play-publish/                  publish.js, package.json, Tests
+│  ├─ play-publish/                  publish.js, package.json, Tests
+│  └─ deploy/                        Konfiguration für das Ausliefern
 ├─ tests/
-│  └─ e2e/                           Browser-Tests (Playwright)
+│  ├─ e2e/                           Browser-Tests (Playwright)
+│  └─ worker/                        Tests des Zugangsschutzes
 ├─ fastlane/
 │  └─ metadata/android/de-DE/        Ziel des ZIP-Exports
 ├─ .github/workflows/
 │  ├─ ci.yml                         Tests bei jedem Push und Pull Request
-│  ├─ deploy-pages.yml               veröffentlicht docs/
+│  ├─ deploy-cloudflare.yml          liefert docs/ geschützt aus
 │  ├─ pull-listing.yml               holt die Texte des bestehenden Eintrags
 │  └─ publish-listing.yml            lädt das Listing hoch
 └─ .gitignore
 ```
 
-## GitHub Pages aktivieren
+## Seite bereitstellen
 
-*Settings → Pages*, bei **Source** die Option **GitHub Actions** wählen —
-nicht „Deploy from a branch“, sonst greift dieser Workflow nicht.
+Die Werkbank wird über Cloudflare Pages ausgeliefert und ist nur nach
+Anmeldung erreichbar. Einrichtung, Einladen und Entziehen von Zugängen
+stehen in [ZUGANG.md](ZUGANG.md).
 
-Danach einmal pushen oder den Workflow unter *Actions → Seite veröffentlichen
-→ Run workflow* starten. Die Adresse steht anschließend im Job unter
-*deploy* und lautet `https://<name>.github.io/<repo>/`.
-
-Bei einem privaten Repo ist Pages nur mit bezahltem Plan verfügbar. Die
-HTML-Datei funktioniert aber genauso per Doppelklick vom eigenen Rechner.
+Ohne Hosting funktioniert `docs/index.html` weiterhin per Doppelklick vom
+eigenen Rechner.
 
 ## Secrets für den Upload
 
@@ -71,15 +71,6 @@ Das Tool speichert den Stand automatisch im Browser. Die Projektdatei
 (`*-projekt.json`, über *Sichern*) kannst du zusätzlich mit ins Repo legen —
 dann fängt auch ein anderer Rechner beim nächsten Release nicht bei null an.
 
-
-## Zugriff auf die Seite
-
-Die Seite ist ein reines Werkzeug: Sie enthält keine Zugangsdaten, lädt nichts
-nach und schickt nichts weg. Bilder, Texte und der gespeicherte Stand bleiben
-im Browser dessen, der sie benutzt. Ein Passwortschutz ist deshalb nicht
-nötig. Wer sie trotzdem nicht öffentlich haben will, nutzt sie lokal per
-Doppelklick oder setzt einen Zugangsschutz davor (GitHub Pages selbst bietet
-das nur im Enterprise-Tarif).
 
 ## Screenshots automatisch aufnehmen
 

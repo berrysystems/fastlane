@@ -17,7 +17,8 @@ und keine Internetverbindung — Schriften und ZIP-Bibliothek liegen in
 `docs/assets/`, es wird nichts von fremden Servern geladen und nichts
 verlässt deinen Rechner.
 
-Als Seite bereitstellen: siehe [SETUP.md](SETUP.md).
+Als Seite fürs Team bereitstellen, mit Anmeldung und Einladungen: siehe
+[ZUGANG.md](ZUGANG.md). Übriges Einrichten: [SETUP.md](SETUP.md).
 
 Hochladen einrichten: siehe [tools/play-publish/README.md](tools/play-publish/README.md).
 
@@ -84,10 +85,13 @@ docs/
   assets/app.js         Logik, ohne Build-Schritt
   assets/fonts/         Schriften (SIL Open Font License)
   assets/vendor/        JSZip 3.10.1 (MIT)
+  _worker.js            Zugangsschutz: prüft bei Cloudflare jede Anfrage
 tools/play-publish/     Upload-Skript mit Tests
+tools/deploy/           Konfiguration für das Ausliefern
 tests/e2e/              Browser-Tests der Werkbank (Playwright)
+tests/worker/           Tests des Zugangsschutzes
 fastlane/metadata/      Ziel des ZIP-Exports
-.github/workflows/      Seite ausliefern, Listing hochladen, Tests
+.github/workflows/      Seite ausliefern, Listing holen und hochladen, Tests
 ```
 
 ## Entwickeln
@@ -98,6 +102,12 @@ Tests des Upload-Skripts:
 
 ```bash
 cd tools/play-publish && npm ci && npm test
+```
+
+Tests des Zugangsschutzes:
+
+```bash
+node --test tests/worker/worker.test.mjs
 ```
 
 Browser-Tests der Werkbank (einmalig vorher `npx playwright install`):
