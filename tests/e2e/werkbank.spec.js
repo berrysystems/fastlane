@@ -755,3 +755,137 @@ test("Tablet-Formate bekommen einen Tablet-Rahmen", async ({ page }) => {
   expect(tablet.height * tablet.canvasRatio / 0.76).toBeGreaterThan(1.5);
   expect(tablet.height * tablet.canvasRatio / 0.76).toBeLessThan(1.7);
 });
+
+/* ------------------------------------------------------------------ *
+ * Server-Funktionen (gegen den nachgestellten Server-Teil in serve.js)
+ * ------------------------------------------------------------------ */
+
+test("Vorschläge per Knopf füllen Texte und Captions", async ({ page }) => {
+  await open(page);
+  await addShots(page, 2);
+  await page.locator("#tab-brief").click();
+  await expect(page.locator("#aibox")).toBeVisible();
+  await page.locator("#bWhat").fill("Erfasst Arbeitszeiten und schreibt daraus Rechnungen.");
+  await page.locator("#bFeatures").fill("Rechnung als PDF");
+  await page.locator("#aiGo").click();
+  await expect(page.locator("#panel-text")).toBeVisible();
+  await expect(page.locator("#mTitle")).toHaveValue("Stundenwerk");
+  await expect(page.locator("#mFull")).toHaveValue("Erfasse deine Zeiten.\n\n• Rechnung als PDF");
+  await expect(page.locator("#titlealts .altchip")).toHaveText("Zeitwerk");
+  await page.locator("#tab-shots").click();
+  await expect(captions(page).nth(1)).toHaveValue("Vorschlag 2");
+});
+
+test("Direkt veröffentlichen: Probelauf und Veröffentlichen schicken alles in der richtigen Reihenfolge", async ({ page, request }) => {
+  await open(page);
+  const pkg = "de.test.veroeffentlichen" + Date.now();
+  await page.locator("#tab-export").click();
+  await expect(page.locator("#publishcard")).toBeVisible();
+
+  // Ohne Paketnamen und mit offener Checkliste geht nichts an den Server.
+  await page.locator("#pubcheck").click();
+  await expect(page.locator(".toast.error").last()).toContainText("Paketnamen");
+  await page.locator("#tab-text").click();
+  await page.locator("#mPackage").fill(pkg);
+  await page.locator("#tab-export").click();
+  await page.locator("#pubcheck").click();
+  await expect(page.locator(".toast.error").last()).toContainText("Erst die Checkliste abschließen");
+  expect(await (await request.get("/__test/publish?package=" + pkg)).json()).toEqual([]);
+
+  await addLogo(page);
+  await addShots(page, 2);
+  await fillTexts(page, { title: "Tagwerk" });
+  await page.locator("#tab-export").click();
+  await page.locator("#pubcheck").click();
+  await expect(page.locator("#pubstate")).toContainText("Probelauf", { timeout: 15000 });
+  await expect(page.locator("#pubstate")).toContainText("Nichts wurde verändert");
+  expect(await (await request.get("/__test/publish?package=" + pkg)).json()).toEqual([
+    "start",
+    "listing de-DE Tagwerk",
+    "image de-DE icon first image/png png",
+    "image de-DE featureGraphic first image/jpeg jpeg",
+    "image de-DE phoneScreenshots first image/jpeg jpeg",
+    "image de-DE phoneScreenshots image/jpeg jpeg",
+    "finish check",
+  ]);
+
+  // Veröffentlichen fragt nach — Abbrechen schickt nichts.
+  page.once("dialog", (d) => d.dismiss());
+  await page.locator("#pubgo").click();
+  expect((await (await request.get("/__test/publish?package=" + pkg)).json()).length).toBe(7);
+  page.once("dialog", (d) => { expect(d.message()).toContain(pkg); d.accept(); });
+  await page.locator("#pubgo").click();
+  await expect(page.locator("#pubstate")).toContainText("Veröffentlicht um", { timeout: 15000 });
+  const calls = await (await request.get("/__test/publish?package=" + pkg)).json();
+  expect(calls.length).toBe(14);
+  expect(calls[13]).toBe("finish commit");
+});
+
+test("Direkt veröffentlichen: lehnt Google ab, wird der Vorgang verworfen und der Grund gezeigt", async ({ page, request }) => {
+  await open(page);
+  const pkg = "de.test.kaputt" + Date.now();
+  await addLogo(page);
+  await addShots(page, 2);
+  await fillTexts(page);
+  await page.locator("#mPackage").fill(pkg);
+  await page.locator("#tab-export").click();
+  await page.locator("#pubcheck").click();
+  await expect(page.locator(".toast.error").last()).toContainText("Screenshot zu klein", { timeout: 15000 });
+  await expect(page.locator("#pubstate")).toContainText("Abgebrochen");
+  const calls = await (await request.get("/__test/publish?package=" + pkg)).json();
+  expect(calls.slice(-2)).toEqual(["finish abgelehnt", "abort"]);
+  test.info().problems.length = 0;   // der 502 des nachgestellten Servers ist hier gewollt
+});
+
+test("Team-Ablage: ablegen, in einem anderen Browser öffnen, Konflikt bemerken, löschen", async ({ page, browser }) => {
+  const name = "Teamprojekt " + Date.now();
+  await open(page);
+  await addShots(page, 2);
+  await captions(page).nth(0).fill("Aus dem Team");
+  await fillTexts(page, { title: name });
+  await settle(page);
+  await page.locator("#projectbtn").click();
+  await expect(page.locator("#teambox")).toBeVisible();
+  await page.locator("#teamput").click();
+  const row = page.locator("#teamlist li", { hasText: name });
+  await expect(row).toContainText("test.nutzer@example.com");
+
+  // Zweites Mitglied: eigener Browser, leere Ablage.
+  const other = await (await browser.newContext()).newPage();
+  await open(other);
+  await other.locator("#projectbtn").click();
+  await other.getByRole("button", { name: `${name} aus dem Team öffnen` }).click();
+  await expect(other.locator("#projectdialog")).toBeHidden();
+  await expect(other.locator("#projectname")).toHaveText(name);
+  await other.locator("#tab-shots").click();
+  await expect(other.locator(".shotrow")).toHaveCount(2);
+  await expect(captions(other).nth(0)).toHaveValue("Aus dem Team");
+
+  // Das zweite Mitglied ändert und legt ab — es kennt den Stand, also ohne Rückfrage.
+  await captions(other).nth(0).fill("Vom zweiten Mitglied");
+  await settle(other);
+  await other.locator("#projectbtn").click();
+  await other.locator("#teamput").click();
+  await expect(other.locator(".toast").last()).toContainText("liegt jetzt in der Team-Ablage");
+
+  // Das erste Mitglied legt seinen alten Stand ab: Rückfrage, Abbruch lässt alles wie es ist.
+  let asked = "";
+  page.once("dialog", (d) => { asked = d.message(); d.dismiss(); });
+  await page.locator("#teamput").click();
+  await expect.poll(() => asked).toContain("neu abgelegt");
+  test.info().problems.length = 0;   // der 409 ist hier gewollt
+
+  // Stattdessen den neuen Stand holen: ersetzt nach Rückfrage die eigene Kopie.
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: `${name} aus dem Team öffnen` }).click();
+  await expect(page.locator("#projectdialog")).toBeHidden();
+  await page.locator("#tab-shots").click();
+  await expect(captions(page).nth(0)).toHaveValue("Vom zweiten Mitglied");
+  await page.locator("#projectbtn").click();
+  await expect(page.locator("#projectlist li")).toHaveCount(1);
+
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: `${name} aus dem Team löschen` }).click();
+  await expect(page.locator("#teamlist li", { hasText: name })).toHaveCount(0);
+  await other.context().close();
+});

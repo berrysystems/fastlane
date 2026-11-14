@@ -13,7 +13,7 @@ mein-app-repo/
 │  └─ deploy/                        Konfiguration für das Ausliefern
 ├─ tests/
 │  ├─ e2e/                           Browser-Tests (Playwright)
-│  └─ worker/                        Tests des Zugangsschutzes
+│  └─ worker/                        Tests des Server-Teils
 ├─ fastlane/
 │  └─ metadata/android/de-DE/        Ziel des ZIP-Exports
 ├─ .github/workflows/

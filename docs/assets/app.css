@@ -399,3 +399,11 @@ details.inline .tree{margin-top:8px;max-height:280px;overflow:auto;white-space:p
 .shotopts .mini input{flex:1;min-width:0}
 .row > .grow2{flex:2.2}
 .noterow .settag{flex:none;font-family:var(--mono);font-size:10.5px;color:var(--ink-2);border:1px solid var(--line);border-radius:999px;padding:1px 7px}
+
+/* ---------- Server-Funktionen: Vorschläge, Veröffentlichen, Team ---------- */
+.aibox{margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--line-soft)}
+#pubstate:empty{display:none}
+#pubstate{color:var(--ink);font-weight:500}
+.teambox{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
+.teambox h3{font-family:var(--display);font-size:16px;font-weight:700;margin-bottom:4px}
+.projectlist .empty-row{color:var(--ink-2);font-size:13.5px;justify-content:center}

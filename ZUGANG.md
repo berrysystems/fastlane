@@ -122,34 +122,83 @@ In einem privaten Browserfenster:
 | `https://<projekt>.pages.dev`                      | „Kein Zugriff — Diese Adresse ist gesperrt“ |
 | `https://berrysystems.github.io/fastlane/`         | nicht mehr erreichbar             |
 
-## Abruf aus Play in der Werkbank freischalten
+## Server-Funktionen freischalten
 
-Im Schritt *Texte* kann die Werkbank die aktuellen Store-Texte einer App
-direkt laden (*Aus Play laden*). Den Abruf erledigt der Türsteher bei
-Cloudflare — der Schlüssel des Dienstkontos erreicht nie den Browser, und es
-wird nur gelesen.
+Vier Funktionen laufen über den Türsteher bei Cloudflare statt im Browser.
+Jede ist **aus**, bis sie ausdrücklich eingeschaltet wird. Eingeschaltet wird
+im GitHub-Repo unter *Settings → Secrets and variables → Actions →
+Variables*; danach *Seite veröffentlichen* starten. Geheimnisse werden nie
+automatisch kopiert — sie hinterlegst du von Hand im Pages-Projekt unter
+*Settings → Variables and Secrets* als **Secret**.
 
-Freischalten in zwei Schritten:
+| Funktion | Variable in GitHub | Zusätzlich bei Cloudflare |
+|---|---|---|
+| Store-Eintrag aus Play laden | `PLAY_IN_WERKBANK` = `true` | Secret `GOOGLE_SERVICE_ACCOUNT_KEY` |
+| Direkt veröffentlichen | `PLAY_PUBLISH_IN_WERKBANK` = `true` und `PUBLISHERS` | Secret `GOOGLE_SERVICE_ACCOUNT_KEY` |
+| Textvorschläge per Knopf | `AI_IN_WERKBANK` = `true` | Secret `ANTHROPIC_API_KEY` |
+| Team-Ablage | `TEAM_KV_ID` | ein KV-Namespace |
 
-1. **Schlüssel bei Cloudflare hinterlegen** — von Hand, er wird nicht
-   automatisch dorthin kopiert. Im Pages-Projekt unter *Settings → Variables
-   and Secrets* ein **Secret** mit dem Namen `GOOGLE_SERVICE_ACCOUNT_KEY`
-   anlegen und den kompletten Inhalt der JSON-Schlüsseldatei des Dienstkontos
-   einfügen (derselbe Schlüssel wie im GitHub-Secret
-   `PLAY_SERVICE_ACCOUNT_KEY`).
-2. **Abruf einschalten** — im GitHub-Repo unter *Variables*
-   `PLAY_IN_WERKBANK` auf `true` setzen und *Seite veröffentlichen* starten.
+### Store-Eintrag aus Play laden
 
-Zu bedenken:
+Im Schritt *Texte* holt *Aus Play laden* die aktuellen Store-Texte aller
+Sprachen. Es wird nur gelesen. `GOOGLE_SERVICE_ACCOUNT_KEY` ist der komplette
+Inhalt der JSON-Schlüsseldatei des Dienstkontos — derselbe Schlüssel wie im
+GitHub-Secret `PLAY_SERVICE_ACCOUNT_KEY`.
 
-- Der Schlüssel liegt danach **zusätzlich bei Cloudflare**.
-- **Jedes eingeladene Mitglied** kann die Texte aller Apps abrufen, auf die
-  das Dienstkonto in der Play Console Zugriff hat. Veröffentlichen kann es
-  darüber nichts.
-- Wer wann welche App abruft, steht in den Logs des Pages-Projekts.
+Jedes eingeladene Mitglied kann damit die Texte aller Apps abrufen, auf die
+das Dienstkonto in der Play Console Zugriff hat.
 
-Abschalten: die Variable entfernen und neu ausliefern — der Türsteher lehnt
-den Abruf dann ab. Zusätzlich das Secret im Pages-Projekt löschen.
+### Direkt veröffentlichen
+
+Im Schritt *Export* erscheinen *Probelauf* und *Jetzt veröffentlichen*. Die
+Werkbank rendert alle Sprachen und Geräte und schickt Texte und Bilder zu
+Google Play — ohne ZIP und Repo.
+
+- **`PUBLISHERS`** ist die Liste der E-Mail-Adressen, die veröffentlichen
+  dürfen, mit Komma getrennt. Ist sie leer, darf es niemand — auch wenn der
+  Schalter an ist. Alle anderen Mitglieder sehen die Knöpfe nicht.
+- **Probelauf** lässt Google den Eintrag prüfen und verwirft ihn danach. Im
+  Store ändert sich nichts.
+- **Veröffentlichen** fragt nach und ersetzt dann Texte und Bilder aller
+  Sprachen im Projekt. Die Änderungen gehen in die Prüfung bei Google.
+- Bricht etwas ab, wird der Vorgang bei Google verworfen.
+- Das Dienstkonto braucht in der Play Console das Recht, den Store-Eintrag
+  zu bearbeiten.
+
+Änderungshinweise („Was ist neu“) gehören zu einem Release und werden so
+nicht übertragen; dafür bleibt der Weg über ZIP und Workflow.
+
+### Textvorschläge per Knopf
+
+Im Schritt *Briefing* schickt *Vorschläge direkt erzeugen* den Auftrag an
+die Claude-API und füllt Texte und Captions. `ANTHROPIC_API_KEY` ist ein
+Schlüssel aus der [Claude Console](https://platform.claude.com/). Jede
+Anfrage kostet Geld auf diesem Konto — je nach Zahl der Sprachen wenige Cent.
+Der Weg über *Auftrag kopieren* bleibt daneben bestehen und kostet nichts.
+
+### Team-Ablage
+
+Im Dialog *Projekt* erscheint die *Team-Ablage*: Mitglieder legen ein Projekt
+fürs Team ab, andere öffnen eine Kopie davon. Es gibt kein gleichzeitiges
+Bearbeiten — wer ablegt, ersetzt den abgelegten Stand. Hat jemand anderes
+inzwischen abgelegt, fragt die Werkbank vorher nach.
+
+Einrichten: im Cloudflare-Dashboard unter *Storage & Databases → KV* einen
+Namespace anlegen (Name beliebig, z. B. `werkbank-team`) und dessen **ID**
+(32 Zeichen) als Variable `TEAM_KV_ID` in GitHub eintragen.
+
+Ein Projekt darf höchstens 24 MB groß sein. Größere gibst du weiterhin als
+Datei weiter.
+
+### Wer hat was getan?
+
+Abruf, Veröffentlichen, Vorschläge und Ablegen stehen mit der E-Mail-Adresse
+des Mitglieds in den Logs des Pages-Projekts.
+
+### Abschalten
+
+Die Variable entfernen und neu ausliefern — der Türsteher lehnt die Funktion
+dann ab. Das zugehörige Secret zusätzlich im Pages-Projekt löschen.
 
 ## Jemanden einladen
 
@@ -196,9 +245,10 @@ gesichert hat, bleiben bei ihr.
 | „Diese Adresse ist gesperrt“                         | Die aufgerufene Adresse steht nicht in `SITE_HOST`. |
 | „… nur für eingeladene Mitglieder“ nach erfolgreicher Anmeldung | `ACCESS_AUD` passt nicht zur Access-Anwendung, oder `ACCESS_TEAM_DOMAIN` gehört zu einem anderen Team. |
 | Kein Code kommt an                                   | Die Adresse steht nicht in der Richtlinie, oder die Mail liegt im Spam. |
-| *Aus Play laden* fehlt                               | Der Knopf erscheint nur auf der geschützten Seite, nicht lokal. |
-| „Der Abruf aus Play ist … nicht eingerichtet“        | `PLAY_IN_WERKBANK` ist nicht `true`, oder das Secret `GOOGLE_SERVICE_ACCOUNT_KEY` fehlt im Pages-Projekt. Danach neu ausliefern. |
-| „Das Dienstkonto darf den Eintrag … nicht lesen“     | In der Play Console fehlt dem Dienstkonto die Berechtigung für diese App. |
+| Ein Knopf fehlt (*Aus Play laden*, *Vorschläge direkt erzeugen*, *Jetzt veröffentlichen*, *Team-Ablage*) | Die Funktion ist nicht eingeschaltet, das Secret fehlt, oder — beim Veröffentlichen — deine Adresse steht nicht in `PUBLISHERS`. Nach dem Ändern neu ausliefern und die Seite neu laden. Lokal gibt es diese Knöpfe nie. |
+| „Die Anmeldung des Dienstkontos bei Google ist fehlgeschlagen“ | Das Secret `GOOGLE_SERVICE_ACCOUNT_KEY` ist unvollständig eingefügt oder der Schlüssel wurde bei Google gelöscht. |
+| „Das Dienstkonto hat für diese App nicht die nötige Berechtigung“ | In der Play Console fehlt dem Dienstkonto das Recht für diese App. |
+| „Der hinterlegte Schlüssel für die Claude-API ist ungültig“ | Das Secret `ANTHROPIC_API_KEY` prüfen. |
 
 ## Offizielle Anleitungen
 

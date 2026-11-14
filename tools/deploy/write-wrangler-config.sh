@@ -10,6 +10,10 @@
 #   ACCESS_AUD           AUD-Tag der Access-Anwendung, mehrere mit Komma
 #   SITE_HOST            Adresse der Seite, z. B. fastlane.example.com
 #   PLAY_IN_WERKBANK     "true" schaltet den Abruf aus Play in der Werkbank frei
+#   PLAY_PUBLISH_IN_WERKBANK  "true" schaltet das Veröffentlichen frei
+#   PUBLISHERS           E-Mail-Adressen, die veröffentlichen dürfen, mit Komma
+#   AI_IN_WERKBANK       "true" schaltet Textvorschläge per Knopf frei
+#   TEAM_KV_ID           ID eines KV-Namespace für die Team-Ablage
 set -euo pipefail
 
 project="${PAGES_PROJECT:-fastlane}"
@@ -18,6 +22,12 @@ aud="${ACCESS_AUD:-}"
 host="${SITE_HOST:-}"
 play_api=""
 if [[ "${PLAY_IN_WERKBANK:-}" == "true" ]]; then play_api="on"; fi
+play_publish=""
+if [[ "${PLAY_PUBLISH_IN_WERKBANK:-}" == "true" ]]; then play_publish="on"; fi
+ai_api=""
+if [[ "${AI_IN_WERKBANK:-}" == "true" ]]; then ai_api="on"; fi
+publishers="${PUBLISHERS:-}"
+team_kv="${TEAM_KV_ID:-}"
 out="${1:-wrangler.toml}"
 
 # Die Werte landen in einer Konfigurationsdatei. Alles außer den hier
@@ -34,6 +44,8 @@ check PAGES_PROJECT "$project" '^[a-z0-9][a-z0-9-]{0,57}$'
 check ACCESS_TEAM_DOMAIN "$team" '^[A-Za-z0-9.-]+$'
 check ACCESS_AUD "$aud" '^[A-Za-z0-9, ]+$'
 check SITE_HOST "$host" '^[A-Za-z0-9., -]+$'
+check PUBLISHERS "$publishers" '^[A-Za-z0-9@._+, -]+$'
+check TEAM_KV_ID "$team_kv" '^[0-9a-f]{32}$'
 
 cat > "$out" <<TOML
 # Erzeugt von tools/deploy/write-wrangler-config.sh — nicht von Hand ändern.
@@ -46,9 +58,26 @@ ACCESS_TEAM_DOMAIN = "$team"
 ACCESS_AUD = "$aud"
 ALLOWED_HOSTS = "$host"
 PLAY_API = "$play_api"
+PLAY_PUBLISH = "$play_publish"
+PUBLISHERS = "$publishers"
+AI_API = "$ai_api"
 TOML
+
+if [[ -n "$team_kv" ]]; then
+  cat >> "$out" <<TOML
+
+[[kv_namespaces]]
+binding = "TEAM"
+id = "$team_kv"
+TOML
+fi
+
+if [[ "$play_publish" == "on" && -z "$publishers" ]]; then
+  echo "::warning::Veröffentlichen ist eingeschaltet, aber PUBLISHERS ist leer — niemand darf veröffentlichen."
+fi
 
 if [[ -z "$team" || -z "$aud" || -z "$host" ]]; then
   echo "::warning::Zugangsschutz noch nicht eingerichtet (ACCESS_TEAM_DOMAIN, ACCESS_AUD oder SITE_HOST fehlt). Die Seite wird ausgeliefert, bleibt aber für alle geschlossen. Siehe ZUGANG.md."
 fi
-echo "wrangler.toml geschrieben für Projekt \"$project\" (Abruf aus Play: ${play_api:-aus})."
+echo "wrangler.toml geschrieben für Projekt \"$project\"."
+echo "  Abruf aus Play: ${play_api:-aus} · Veröffentlichen: ${play_publish:-aus} · Textvorschläge: ${ai_api:-aus} · Team-Ablage: $([[ -n "$team_kv" ]] && echo on || echo aus)"

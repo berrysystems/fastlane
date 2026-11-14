@@ -1553,24 +1553,53 @@
   // Hinter dem Zugangsschutz gibt es einen Server-Teil, der den bestehenden
   // Eintrag bei Google abruft. Der Schlüssel dafür liegt nur dort.
   const hasBackend = () => /(?:^|;\s*)wb_user=/.test(document.cookie);
-  async function pullFromPlay() {
-    const pkg = $("mPackage").value.trim();
-    if (!PACKAGE_RE.test(pkg) || pkg === DEFAULTS.mPackage) {
-      toast("Trage zuerst den Paketnamen der App ein.", "error");
-      $("mPackage").focus();
-      return;
-    }
-    let res;
+  // Was der Server diesem Mitglied erlaubt. Solange nichts bekannt ist: nichts.
+  const backend = { features: { pull: false, publish: false, ai: false, team: false } };
+
+  async function apiFetch(path, init = {}) {
     try {
-      res = await fetch("/api/listing?package=" + encodeURIComponent(pkg), {
-        headers: { "X-Werkbank": "1", Accept: "application/json" }, credentials: "same-origin", redirect: "error",
+      return await fetch(path, {
+        ...init, credentials: "same-origin", redirect: "error",
+        headers: { "X-Werkbank": "1", Accept: "application/json", ...(init.headers || {}) },
       });
     } catch (_) {
       throw new Error("Keine Antwort vom Server. Ist die Anmeldung abgelaufen? Dann die Seite neu laden.");
     }
+  }
+  // Wie apiFetch, liefert aber die JSON-Antwort und wirft die Fehlermeldung des Servers.
+  async function apiJson(path, init) {
+    const res = await apiFetch(path, init);
     let data = null;
     try { data = await res.json(); } catch (_) { /* keine JSON-Antwort */ }
-    if (!res.ok || !data) throw new Error((data && data.error) || `Der Abruf ist fehlgeschlagen (${res.status}).`);
+    if (!res.ok || !data) {
+      const error = new Error((data && data.error) || `Der Aufruf ist fehlgeschlagen (${res.status}).`);
+      error.status = res.status;
+      error.data = data;
+      throw error;
+    }
+    return data;
+  }
+  async function loadBackend() {
+    if (hasBackend()) {
+      try { Object.assign(backend.features, (await apiJson("/api/me")).features); }
+      catch (err) { console.warn("Server-Funktionen nicht abrufbar", err); }
+    }
+    $("pullplay").hidden = !backend.features.pull;
+    $("aibox").hidden = !backend.features.ai;
+    $("publishcard").hidden = !backend.features.publish;
+    $("teambox").hidden = !backend.features.team;
+  }
+
+  function packageName() {
+    const pkg = $("mPackage").value.trim();
+    if (PACKAGE_RE.test(pkg) && pkg !== DEFAULTS.mPackage) return pkg;
+    toast("Trage zuerst den Paketnamen der App ein (Schritt 4 „Texte“).", "error");
+    return "";
+  }
+  async function pullFromPlay() {
+    const pkg = packageName();
+    if (!pkg) { $("mPackage").focus(); return; }
+    const data = await apiJson("/api/listing?package=" + encodeURIComponent(pkg));
     const found = {};
     (Array.isArray(data.listings) ? data.listings : []).forEach((l) => {
       if (!l || !LOCALE_RE.test(String(l.language || ""))) return;
@@ -1590,6 +1619,71 @@
     return importListing(files
       .filter((f) => /\.txt$/.test(f.name))
       .map((f) => ({ path: f.webkitRelativePath || f.name, read: () => f.text() })));
+  }
+
+  /* ================================================================== *
+   * Server-Funktionen: Vorschläge, Veröffentlichen
+   * ================================================================== */
+
+  async function suggestTexts() {
+    if (!$("bWhat").value.trim()) toast("Tipp: Beschreibe zuerst, was die App tut — sonst bleiben die Texte allgemein.");
+    toast("Vorschläge werden erzeugt — das dauert bis zu einer Minute.");
+    const { text } = await apiJson("/api/suggest", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: buildPrompt() }),
+    });
+    applySuggestions(text);
+  }
+
+  // Schickt jede Sprache und jedes Bild einzeln zum Server, der sie an Google
+  // Play weiterreicht. Erst der letzte Aufruf verändert den Store — und nur
+  // bei commit. Bricht etwas ab, wird der Vorgang bei Google verworfen.
+  async function publishListing(commit) {
+    const pkg = packageName();
+    if (!pkg) return;
+    const open = checks().filter((c) => c.ok === false).map((c) => c.label.replace(/\s*\(.*\)$/, ""));
+    if (open.length) { toast("Erst die Checkliste abschließen. Noch offen: " + open.join(", ") + ".", "error"); return; }
+    if (commit && !confirm(
+      `Store-Eintrag von ${pkg} jetzt überschreiben?\n\nSprachen: ${state.locales.join(", ")}\n` +
+      "Texte und Bilder im Play Store werden ersetzt und gehen in die Prüfung bei Google.")) return;
+
+    const say = (text) => { $("pubstate").textContent = text; };
+    const query = (extra) => "?" + new URLSearchParams({ package: pkg, ...extra }).toString();
+    say("Verbinde mit Google Play …");
+    let edit = "";
+    try {
+      ({ edit } = await apiJson("/api/publish/start" + query({}), { method: "POST" }));
+      await renderListing(async ({ locale, texts, icon, feature, sets }) => {
+        say(`${locale}: Texte …`);
+        await apiJson("/api/publish/listing" + query({ edit, language: locale }), {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: texts.mTitle, shortDescription: texts.mShort, fullDescription: texts.mFull, video: texts.mVideo }),
+        });
+        const upload = async (type, blob, first, label) => {
+          say(`${locale}: ${label} …`);
+          await apiJson("/api/publish/image" + query({ edit, language: locale, type, ...(first ? { first: "1" } : {}) }), {
+            method: "POST", headers: { "Content-Type": blob.type }, body: blob,
+          });
+        };
+        if (icon) await upload("icon", icon, true, "Icon");
+        await upload("featureGraphic", feature, true, "Feature Graphic");
+        for (const { dir, images } of sets) {
+          for (let i = 0; i < images.length; i++) {
+            await upload(dir, images[i], i === 0, `${SETS[dir].label}-Screenshot ${i + 1} von ${images.length}`);
+          }
+        }
+      });
+      say(commit ? "Veröffentliche …" : "Google prüft …");
+      await apiJson("/api/publish/finish" + query({ edit, mode: commit ? "commit" : "check" }), { method: "POST" });
+    } catch (err) {
+      if (edit) await apiFetch("/api/publish/abort" + query({ edit }), { method: "POST" }).catch(() => {});
+      say("Abgebrochen — im Store wurde nichts verändert.");
+      throw err;
+    }
+    const when = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+    say(commit
+      ? `Veröffentlicht um ${when}. Die Änderungen gehen jetzt in die Prüfung bei Google.`
+      : `Probelauf um ${when} bestanden: Google hätte den Eintrag angenommen. Nichts wurde verändert.`);
+    toast(commit ? "Store-Eintrag veröffentlicht." : "Probelauf bestanden.");
   }
 
   /* ================================================================== *
@@ -2036,7 +2130,8 @@
   let saveTimer = 0, autosave = true;
   function setSaveState(text) { $("savestate").textContent = text; }
   // ---- Projekte: mehrere Store-Einträge nebeneinander im selben Browser
-  const projects = { id: "", list: [] };   // list: [{ id, name, pkg, shots, locales, updated }]
+  // list: [{ id, name, pkg, shots, locales, updated }]; teamAt: zuletzt bekannter Stand je Projekt in der Team-Ablage
+  const projects = { id: "", list: [], teamAt: {} };
   const newId = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 
   function projectName() {
@@ -2065,7 +2160,7 @@
       if (blank) await local.del(projectKey(id));
       else await local.put(projectKey(id), await packSnapshot(snapshot()));
       projects.list = [...(blank ? [] : [entry]), ...projects.list.filter((p) => p.id !== id)];
-      await local.put("meta", { active: projects.id, list: projects.list });
+      await local.put("meta", { active: projects.id, list: projects.list, teamAt: projects.teamAt });
       setSaveState(blank ? "" : "Automatisch gespeichert");
       renderProjectUi();
     }
@@ -2154,9 +2249,10 @@
     saveTimer = setTimeout(() => { commitHistory(); persist(); }, 600);
   }
 
-  async function saveProjectFile() {
+  // Das geöffnete Projekt als eine Datei: Bilder und Schrift eingebettet.
+  async function projectFileData() {
     const snap = snapshot();
-    const data = {
+    return {
       version: snap.version, saved: new Date().toISOString(),
       settings: snap.settings, locale: snap.locale, locales: snap.locales, texts: snap.texts,
       shots: await Promise.all(snap.shots.map(async ({ blob, ...rest }) => ({ ...rest, image: await blobToDataUrl(blob) }))),
@@ -2164,38 +2260,112 @@
       featLogo: snap.featLogo ? await blobToDataUrl(snap.featLogo) : null,
       font: snap.font ? { name: snap.font.name, data: await blobToDataUrl(snap.font.blob) } : null,
     };
+  }
+  async function saveProjectFile() {
+    const data = await projectFileData();
     const title = state.texts[state.locales[0]].mTitle;
     const slug = title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "listing";
     saveBlob(new Blob([JSON.stringify(data)], { type: "application/json" }), slug + "-projekt.json");
     toast("Projektdatei gesichert.");
   }
-  // Eine Projektdatei wird immer ein weiteres Projekt — sie überschreibt nichts.
-  async function loadProjectFile(file) {
+  // Öffnet Projektdaten unter der angegebenen Kennung. Wirft, wenn sie unlesbar sind.
+  async function openProjectData(data, id) {
+    if (!data || typeof data !== "object" || typeof data.settings !== "object") throw new Error("Kein Projekt");
+    let font = null;
+    if (data.font && data.font.data) {
+      try { font = { name: data.font.name, blob: dataUrlToBlob(data.font.data, "font") }; } catch (_) { /* ohne Schrift weiter */ }
+    }
+    const snap = {
+      ...data,
+      shots: (Array.isArray(data.shots) ? data.shots : []).map((s) => ({ ...s, blob: dataUrlToBlob(s.image) })),
+      logo: data.logo ? dataUrlToBlob(data.logo) : null,
+      featLogo: data.featLogo ? dataUrlToBlob(data.featLogo) : null,
+      font,
+    };
     await settleNow();
     const previous = projects.id;
+    projects.id = id;
+    try { await restore(snap); }
+    catch (err) { projects.id = previous; throw err; }
+    await persist();
+  }
+  // Eine Projektdatei wird immer ein weiteres Projekt — sie überschreibt nichts.
+  async function loadProjectFile(file) {
     try {
-      const data = JSON.parse(await file.text());
-      if (!data || typeof data !== "object" || typeof data.settings !== "object") throw new Error("Kein Projekt");
-      let font = null;
-      if (data.font && data.font.data) {
-        try { font = { name: data.font.name, blob: dataUrlToBlob(data.font.data, "font") }; } catch (_) { /* ohne Schrift weiter */ }
-      }
-      const snap = {
-        ...data,
-        shots: (Array.isArray(data.shots) ? data.shots : []).map((s) => ({ ...s, blob: dataUrlToBlob(s.image) })),
-        logo: data.logo ? dataUrlToBlob(data.logo) : null,
-        featLogo: data.featLogo ? dataUrlToBlob(data.featLogo) : null,
-        font,
-      };
-      projects.id = newId();
-      await restore(snap);
-      await persist();
+      await openProjectData(JSON.parse(await file.text()), newId());
       toast(`Projekt „${projectName()}“ geladen.`);
     } catch (err) {
       console.error(err);
-      projects.id = previous;
       toast("Die Datei ließ sich nicht lesen. Ist es eine mit diesem Tool gesicherte Projektdatei?", "error");
     }
+  }
+
+  // ---- Team-Ablage: Projekte ausdrücklich fürs Team ablegen und von dort holen
+  const TEAM_MAX_BYTES = 24 * 1024 * 1024;
+  const teamItem = (id, extra = {}) => "/api/team/item?" + new URLSearchParams({ id, ...extra }).toString();
+
+  async function renderTeam() {
+    if (!backend.features.team) return;
+    const host = $("teamlist");
+    let list;
+    try { ({ projects: list } = await apiJson("/api/team")); }
+    catch (err) { host.replaceChildren(el("li", { class: "empty-row", text: err.message })); return; }
+    if (!list.length) { host.replaceChildren(el("li", { class: "empty-row", text: "Noch nichts abgelegt." })); return; }
+    const when = (time) => new Date(time).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" });
+    host.replaceChildren(...list.map((p) => el("li", {},
+      el("div", { class: "pinfo" },
+        el("b", { text: p.name || "Projekt" }),
+        el("small", { text: [p.by, p.at ? when(p.at) : null, p.size ? (p.size / 1048576).toFixed(1).replace(".", ",") + " MB" : null].filter(Boolean).join(" · ") })),
+      el("button", { class: "btn", type: "button", text: "Öffnen", "aria-label": `${p.name} aus dem Team öffnen`,
+        onclick: (e) => withBusy(e.currentTarget, () => teamOpen(p)) }),
+      el("button", { class: "linkbtn", type: "button", text: "Löschen", "aria-label": `${p.name} aus dem Team löschen`,
+        onclick: (e) => withBusy(e.currentTarget, () => teamDelete(p)) })
+    )));
+  }
+  async function teamPut() {
+    await settleNow();
+    if (isBlankProject()) { toast("Dieses Projekt ist noch leer.", "error"); return; }
+    const body = JSON.stringify(await projectFileData());
+    if (body.length > TEAM_MAX_BYTES) {
+      toast("Das Projekt ist größer als 24 MB und passt nicht in die Team-Ablage. Gib es als Datei weiter.", "error");
+      return;
+    }
+    const id = projects.id, name = projectName();
+    const send = (force) => apiJson(teamItem(id, { name, base: String(projects.teamAt[id] || 0), ...(force ? { force: "1" } : {}) }), {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body,
+    });
+    let saved;
+    try { saved = await send(false); }
+    catch (err) {
+      if (err.status !== 409) throw err;
+      const who = (err.data && err.data.by) || "Jemand";
+      const when = err.data && err.data.at ? new Date(err.data.at).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" }) : "inzwischen";
+      if (!confirm(`${who} hat dieses Projekt am ${when} neu abgelegt.\n\nMit deinem Stand überschreiben? Die Änderungen von ${who} gehen dabei verloren.`)) return;
+      saved = await send(true);
+    }
+    projects.teamAt[id] = saved.at;
+    await persist();
+    await renderTeam();
+    toast(`„${name}“ liegt jetzt in der Team-Ablage.`);
+  }
+  async function teamOpen(entry) {
+    const exists = entry.id === projects.id ? !isBlankProject() : projects.list.some((p) => p.id === entry.id);
+    if (exists && !confirm(`„${entry.name}“ gibt es schon in diesem Browser.\n\nMit dem Stand aus dem Team ersetzen? Deine nicht abgelegten Änderungen gehen dabei verloren.`)) return;
+    const res = await apiFetch(teamItem(entry.id));
+    if (!res.ok) throw new Error(((await res.json().catch(() => null)) || {}).error || "Das Projekt ließ sich nicht laden.");
+    const at = Number(res.headers.get("X-Team-At")) || entry.at || 0;
+    // Gleiche Kennung wie im Team: so ersetzt ein späteres Ablegen denselben Eintrag.
+    await openProjectData(await res.json(), entry.id);
+    projects.teamAt[entry.id] = at;
+    await persist();
+    $("projectdialog").close();
+    toast(`„${projectName()}“ aus dem Team geöffnet.`);
+  }
+  async function teamDelete(entry) {
+    if (!confirm(`„${entry.name}“ aus der Team-Ablage löschen?\n\nKopien in den Browsern der Mitglieder bleiben erhalten.`)) return;
+    await apiJson(teamItem(entry.id), { method: "DELETE" });
+    delete projects.teamAt[entry.id];
+    await renderTeam();
   }
 
   /* ================================================================== *
@@ -2292,7 +2462,12 @@
   onClick("projsave", saveProjectFile);
   onClick("projnew", async () => { await newProject(); $("projectdialog").close(); });
   onClick("pullplay", pullFromPlay);
-  $("projectbtn").addEventListener("click", () => { $("projectdialog").showModal(); renderProjectUi(); });
+  $("projectbtn").addEventListener("click", () => { $("projectdialog").showModal(); renderProjectUi(); renderTeam(); });
+  onClick("teamput", teamPut);
+  onClick("teamrefresh", renderTeam);
+  onClick("aiGo", suggestTexts);
+  onClick("pubcheck", () => publishListing(false));
+  onClick("pubgo", () => publishListing(true));
   $("projclose").addEventListener("click", () => $("projectdialog").close());
   $("projectdialog").addEventListener("click", (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
 
@@ -2367,7 +2542,7 @@
 
   async function boot() {
     showUser();
-    $("pullplay").hidden = !hasBackend();
+    loadBackend();
     buildSwatches();
     // Canvas zeichnet nur mit Schriften, die schon geladen sind. Kurz warten,
     // aber nie hängen bleiben, falls eine Datei fehlt.
@@ -2394,6 +2569,7 @@
       }
       projects.list = meta && Array.isArray(meta.list) ? meta.list.filter((p) => p && typeof p.id === "string") : [];
       projects.id = (meta && typeof meta.active === "string" && meta.active) || newId();
+      projects.teamAt = meta && meta.teamAt && typeof meta.teamAt === "object" ? meta.teamAt : {};
       saved = await local.get(projectKey(projects.id));
     } catch (_) {
       autosave = false;

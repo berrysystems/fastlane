@@ -9,6 +9,8 @@ on:
     paths:
       - 'docs/**'
       - 'tools/deploy/**'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/deploy-cloudflare.yml'
   workflow_dispatch:
 
@@ -34,6 +36,11 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
+          cache: npm
+
+      # Der Server-Teil nutzt das SDK der Claude-API; beim Ausliefern wird es mit eingepackt.
+      - name: Abhängigkeiten des Server-Teils
+        run: npm ci --no-audit --no-fund
 
       - name: Zugangsdaten für Cloudflare prüfen
         env:
@@ -56,6 +63,10 @@ jobs:
           ACCESS_AUD: ${{ vars.ACCESS_AUD || secrets.ACCESS_AUD }}
           SITE_HOST: ${{ vars.SITE_HOST || secrets.SITE_HOST }}
           PLAY_IN_WERKBANK: ${{ vars.PLAY_IN_WERKBANK || secrets.PLAY_IN_WERKBANK }}
+          PLAY_PUBLISH_IN_WERKBANK: ${{ vars.PLAY_PUBLISH_IN_WERKBANK || secrets.PLAY_PUBLISH_IN_WERKBANK }}
+          PUBLISHERS: ${{ vars.PUBLISHERS || secrets.PUBLISHERS }}
+          AI_IN_WERKBANK: ${{ vars.AI_IN_WERKBANK || secrets.AI_IN_WERKBANK }}
+          TEAM_KV_ID: ${{ vars.TEAM_KV_ID || secrets.TEAM_KV_ID }}
         run: tools/deploy/write-wrangler-config.sh
 
       - name: Projekt anlegen, falls es noch fehlt

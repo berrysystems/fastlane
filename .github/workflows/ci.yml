@@ -36,7 +36,10 @@ jobs:
       - name: Syntax des Browser-Tools
         run: node --check docs/assets/app.js
 
-      - name: Tests des Zugangsschutzes
+      - name: Abhängigkeiten des Server-Teils
+        run: npm ci --no-audit --no-fund
+
+      - name: Tests des Server-Teils
         run: node --test tests/worker/worker.test.mjs
 
   browser:
@@ -60,6 +63,11 @@ jobs:
           cache-dependency-path: tests/e2e/package-lock.json
 
       - name: Abhängigkeiten
+        run: npm ci --no-audit --no-fund
+
+      # Der Testserver lädt die Schutz-Header aus dem Server-Teil.
+      - name: Abhängigkeiten des Server-Teils
+        working-directory: .
         run: npm ci --no-audit --no-fund
 
       - name: Browser installieren
