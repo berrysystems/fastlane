@@ -168,13 +168,29 @@
         </select>
       </div>
       <div class="field">
-        <label for="preset">Zielformat</label>
-        <select id="preset">
-          <option value="1080x1920" data-dir="phoneScreenshots">Phone — 1080 × 1920</option>
-          <option value="1242x2208" data-dir="phoneScreenshots">Phone groß — 1242 × 2208</option>
-          <option value="1200x1920" data-dir="sevenInchScreenshots" data-device="tablet">Tablet 7" — 1200 × 1920</option>
-          <option value="1600x2560" data-dir="tenInchScreenshots" data-device="tablet">Tablet 10" — 1600 × 2560</option>
+        <label for="deviceset">Gerät</label>
+        <select id="deviceset">
+          <option value="phoneScreenshots">Phone</option>
+          <option value="sevenInchScreenshots">Tablet 7" — 1200 × 1920</option>
+          <option value="tenInchScreenshots">Tablet 10" — 1600 × 2560</option>
         </select>
+        <p class="help">Jedes Gerät hat eigene Screenshots. Der Export enthält alle Geräte, für die Bilder geladen sind.</p>
+      </div>
+      <div class="row">
+        <div class="field" id="presetfield">
+          <label for="preset">Auflösung</label>
+          <select id="preset">
+            <option value="1080x1920">1080 × 1920</option>
+            <option value="1242x2208">1242 × 2208</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="orient">Ausrichtung</label>
+          <select id="orient">
+            <option value="portrait">Hochformat</option>
+            <option value="landscape">Querformat</option>
+          </select>
+        </div>
       </div>
       <label class="check" for="pano">
         <input type="checkbox" id="pano">
@@ -237,6 +253,14 @@
       <div class="field">
         <label for="headsize">Schriftgröße <output id="headsizeval" for="headsize"></output></label>
         <input type="range" id="headsize" min="36" max="110" value="64" data-unit="px">
+      </div>
+      <div class="field">
+        <label for="capalign">Textausrichtung</label>
+        <select id="capalign">
+          <option value="auto">Automatisch (je nach Anordnung)</option>
+          <option value="center">Zentriert</option>
+          <option value="left">Linksbündig</option>
+        </select>
       </div>
       <div class="field">
         <span class="legend">Schrift der Überschriften</span>
@@ -472,6 +496,17 @@
         <label for="mWhats">Was ist neu <span class="counter" id="cWhats"></span></label>
         <textarea id="mWhats" rows="3" placeholder="Änderungen dieser Version"></textarea>
       </div>
+      <div class="row">
+        <div class="field">
+          <label for="mVersionCode">Versionscode <span class="counter">optional</span></label>
+          <input type="text" id="mVersionCode" inputmode="numeric" placeholder="z. B. 42" autocomplete="off">
+        </div>
+        <div class="field grow2">
+          <label for="mVideo">Vorschauvideo <span class="counter">YouTube-Link, optional</span></label>
+          <input type="text" id="mVideo" inputmode="url" placeholder="https://www.youtube.com/watch?v=…" spellcheck="false" autocomplete="off">
+        </div>
+      </div>
+      <p class="help">Mit Versionscode landen die Änderungshinweise zusätzlich in <code>changelogs/&lt;Code&gt;.txt</code>, wie Fastlane es für einen Release erwartet.</p>
     </div>
 
     <div class="stack">

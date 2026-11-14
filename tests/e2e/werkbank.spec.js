@@ -222,16 +222,122 @@ test("Eigenes Layout gilt nur für den einen Screenshot", async ({ page }) => {
   await expect.poll(() => pixel(page, 0)).not.toEqual([255, 0, 0]);
 });
 
-test("Tablet-Format landet im passenden Ordner", async ({ page }) => {
+test("Phone und Tablet im selben Projekt: eigene Screenshots, ein Export mit beiden Ordnern", async ({ page }) => {
   await open(page);
   await addShots(page, 2);
-  await page.locator("#preset").selectOption("1600x2560");
+  await captions(page).nth(0).fill("Phone-Caption");
+
+  // Anderes Gerät, anderer Satz: die Liste ist zunächst leer.
+  await page.locator("#deviceset").selectOption("tenInchScreenshots");
+  await expect(page.locator(".shotrow")).toHaveCount(0);
+  await expect(page.locator("#presetfield")).toBeHidden();
+  await page.locator("#file").setInputFiles([await png(page, "t1.png", { w: 1600, h: 2560 }), await png(page, "t2.png", { w: 1600, h: 2560, colour: "#C2185B" }), await png(page, "t3.png", { w: 1600, h: 2560 })]);
+  await expect(page.locator(".shotrow")).toHaveCount(3);
+  await captions(page).nth(0).fill("Tablet-Caption");
+  expect(await page.locator("#sheet canvas").first().evaluate((c) => [c.width, c.height])).toEqual([1600, 2560]);
+
+  await page.locator("#deviceset").selectOption("phoneScreenshots");
+  await expect(page.locator(".shotrow")).toHaveCount(2);
+  await expect(captions(page).nth(0)).toHaveValue("Phone-Caption");
+
   await fillTexts(page);
+  await page.locator("#mVideo").fill("https://www.youtube.com/watch?v=abcdefghijk");
+  await page.locator("#mWhats").fill("Dunkelmodus.");
+  await page.locator("#mVersionCode").fill("42");
+  await page.locator("#tab-brief").click();
+  await expect(page.locator(".noterow")).toHaveCount(5);
   await page.locator("#tab-export").click();
+  await expect(page.locator("#tree")).toContainText("phoneScreenshots/");
   await expect(page.locator("#tree")).toContainText("tenInchScreenshots/");
-  const { files } = await downloadZip(page, "#zipmeta");
-  expect(files).toContain("fastlane/metadata/android/de-DE/images/tenInchScreenshots/1_screenshot.jpg");
-  expect(files.some((f) => f.includes("phoneScreenshots"))).toBe(false);
+  const { files, zip } = await downloadZip(page, "#zipmeta");
+  const base = "fastlane/metadata/android/de-DE/";
+  expect(files.filter((f) => f.includes("phoneScreenshots")).length).toBe(2);
+  expect(files.filter((f) => f.includes("tenInchScreenshots")).length).toBe(3);
+  expect(await zip.file(base + "video.txt").async("string")).toBe("https://www.youtube.com/watch?v=abcdefghijk\n");
+  expect(await zip.file(base + "changelogs/42.txt").async("string")).toBe("Dunkelmodus.\n");
+  expect(await zip.file(base + "changelogs/default.txt").async("string")).toBe("Dunkelmodus.\n");
+  // JPEG-Kopf: Die Tablet-Bilder sind wirklich 1600 × 2560, die Phone-Bilder 1080 × 1920.
+  const size = async (name) => {
+    const buf = await zip.file(base + name).async("nodebuffer");
+    for (let i = 2; i < buf.length - 9;) {
+      if (buf[i] !== 0xff) { i++; continue; }
+      if (buf[i + 1] >= 0xc0 && buf[i + 1] <= 0xc3) return [buf.readUInt16BE(i + 7), buf.readUInt16BE(i + 5)];
+      i += 2 + buf.readUInt16BE(i + 2);
+    }
+    return null;
+  };
+  expect(await size("images/phoneScreenshots/1_screenshot.jpg")).toEqual([1080, 1920]);
+  expect(await size("images/tenInchScreenshots/1_screenshot.jpg")).toEqual([1600, 2560]);
+  // Nach dem Export steht wieder das vorher gewählte Gerät da.
+  await expect(page.locator("#deviceset")).toHaveValue("phoneScreenshots");
+
+  // Beides überlebt das Neuladen.
+  await settle(page);
+  await page.reload();
+  await page.waitForSelector("html[data-ready]");
+  await expect(page.locator(".shotrow")).toHaveCount(2);
+  await page.locator("#tab-shots").click();
+  await page.locator("#deviceset").selectOption("tenInchScreenshots");
+  await expect(page.locator(".shotrow")).toHaveCount(3);
+  await expect(captions(page).nth(0)).toHaveValue("Tablet-Caption");
+});
+
+test("Querformat, Ausschnitt und Textausrichtung wirken auf das Bild", async ({ page }) => {
+  await open(page);
+  await addShots(page, 2);
+  const shape = () => page.locator("#sheet canvas").first().evaluate((c) => [c.width, c.height]);
+  expect(await shape()).toEqual([1080, 1920]);
+  await page.locator("#orient").selectOption("landscape");
+  await expect.poll(shape).toEqual([1920, 1080]);
+  await page.locator("#preset").selectOption("1242x2208");
+  await expect.poll(shape).toEqual([2208, 1242]);
+  await page.locator("#orient").selectOption("portrait");
+  await page.locator("#preset").selectOption("1080x1920");
+  await expect.poll(shape).toEqual([1080, 1920]);
+
+  // Ausschnitt vergrößern verändert nur diesen Screenshot.
+  const fingerprint = (index) => page.evaluate((index) => {
+    const canvas = document.querySelectorAll("#sheet canvas")[index];
+    const probe = document.createElement("canvas");
+    probe.width = 24; probe.height = 42;
+    const ctx = probe.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(canvas, 0, 0, 24, 42);
+    return Array.from(ctx.getImageData(0, 0, 24, 42).data).join(",");
+  }, index);
+  const before = [await fingerprint(0), await fingerprint(1)];
+  const row = page.locator(".shotrow").nth(0);
+  await row.locator("summary").click();
+  await row.getByLabel("Vergrößern für Screenshot 1").fill("200");
+  await row.getByLabel("Ausschnitt für Screenshot 1").fill("100");
+  await expect.poll(() => fingerprint(0)).not.toBe(before[0]);
+  expect(await fingerprint(1)).toBe(before[1]);
+  await expect(row.locator("summary")).toContainText("aktiv");
+
+  // Linksbündige Caption: links vom Text ist Hintergrund, in der Mitte nicht mehr nur Hintergrund.
+  await captions(page).nth(1).fill("MMMMMM");
+  const centred = await fingerprint(1);
+  await page.locator("#capalign").selectOption("left");
+  await expect.poll(() => fingerprint(1)).not.toBe(centred);
+});
+
+test("Projektdatei mit Tablet-Zielformat der Vorversion landet im Tablet-Satz", async ({ page }) => {
+  await open(page);
+  const shot = await png(page, "alt.png", { w: 1600, h: 2560 });
+  const image = "data:image/png;base64," + shot.buffer.toString("base64");
+  const old = {
+    version: 4, settings: { preset: "1600x2560" }, locale: "de-DE", locales: ["de-DE"],
+    texts: { "de-DE": { mTitle: "Tablet-App", mShort: "", mFull: "", mWhats: "", ftitle: "", fsub: "", alts: [] } },
+    shots: [{ captions: { "de-DE": { headline: "Alt", sub: "" } }, image }, { captions: {}, image }],
+  };
+  await page.locator("#projfile").setInputFiles({ name: "tablet-projekt.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(old)) });
+  await expect(page.locator("#projectname")).toHaveText("Tablet-App");
+  await page.locator("#tab-shots").click();
+  await expect(page.locator("#deviceset")).toHaveValue("tenInchScreenshots");
+  await expect(page.locator("#preset")).toHaveValue("1080x1920");
+  await expect(page.locator(".shotrow")).toHaveCount(2);
+  await expect(captions(page).nth(0)).toHaveValue("Alt");
+  await page.locator("#deviceset").selectOption("phoneScreenshots");
+  await expect(page.locator(".shotrow")).toHaveCount(0);
 });
 
 test("Sprachen: eigene Texte und Captions je Sprache, Export enthält alle", async ({ page }) => {
@@ -463,6 +569,17 @@ test("Textprüfung meldet Verstöße mit Fundstelle", async ({ page }) => {
   await page.locator("#mTitle").fill("x".repeat(31));
   await expect(page.locator("#cTitle")).toHaveText("31 / 30");
   await expect(lint).toContainText("App-Name ist zu lang");
+
+  // Andere Sprachen und die Zusatzfelder werden ebenfalls geprüft.
+  await page.locator("#mTitle").fill("Tagwerk");
+  await page.locator("#mShort").fill("La meilleure app, gratuite. Téléchargez !");
+  await expect(lint).toContainText("meilleure");
+  await expect(lint).toContainText("gratuite");
+  await expect(lint).toContainText("Téléchargez");
+  await page.locator("#mVideo").fill("https://vimeo.com/123");
+  await expect(lint).toContainText("kein YouTube-Link");
+  await page.locator("#mVersionCode").fill("1.2.0");
+  await expect(lint).toContainText("Versionscode ist keine Zahl");
 });
 
 test("schmales Fenster: kein waagerechtes Scrollen", async ({ page }) => {
@@ -628,7 +745,9 @@ test("Tablet-Formate bekommen einen Tablet-Rahmen", async ({ page }) => {
     return { height: (bottom - top) / canvas.height, width: canvas.width, canvasRatio: canvas.height / canvas.width };
   });
   const phone = await deviceBox();
-  await page.locator("#preset").selectOption("1600x2560");
+  await page.locator("#deviceset").selectOption("tenInchScreenshots");
+  await page.locator("#file").setInputFiles([await png(page, "t1.png", { w: 1600, h: 2560 }), await png(page, "t2.png", { w: 1600, h: 2560 })]);
+  await expect(page.locator(".shotrow")).toHaveCount(2);
   await expect.poll(async () => (await deviceBox()).width).toBe(1600);
   const tablet = await deviceBox();
   // Gerät bei 76 % Breite: Handy rund 2,17 × Breite hoch, Tablet 1,6 ×.

@@ -174,7 +174,7 @@ input[type="range"]{width:100%;accent-color:var(--accent);margin:2px 0}
 .shotlist{list-style:none;margin-top:12px;display:flex;flex-direction:column;gap:8px}
 .shotlist:empty{display:none}
 .shotrow{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:var(--radius);padding:8px;background:var(--surface)}
-.shotrow img{width:36px;height:64px;object-fit:cover;border-radius:5px;background:var(--surface-2);flex:none}
+.shotrow img{width:36px;height:64px;object-fit:contain;border-radius:5px;background:var(--surface-2);flex:none}
 .shotrow{position:relative;gap:8px}
 .shotrow.dragging{opacity:.45}
 .shotrow.dropbefore::before,.shotrow.dropafter::after{content:"";position:absolute;left:0;right:0;height:3px;border-radius:2px;background:var(--accent)}
@@ -343,7 +343,7 @@ li.done .mark{background:var(--ok-soft);color:var(--ok)}
 .notelist{list-style:none;display:flex;flex-direction:column;gap:8px}
 .notelist .hint{font-size:13.5px;color:var(--ink-2);padding:16px;border:1.5px dashed color-mix(in srgb,var(--ink) 22%,transparent);border-radius:var(--radius);text-align:center}
 .noterow{display:flex;gap:10px;align-items:center}
-.noterow img{width:32px;height:56px;object-fit:cover;border-radius:5px;background:var(--surface-2);flex:none;border:1px solid var(--line-soft)}
+.noterow img{width:32px;height:56px;object-fit:contain;border-radius:5px;background:var(--surface-2);flex:none;border:1px solid var(--line-soft)}
 .next strong{font-weight:600}
 .next textarea{margin:8px 0;font-family:var(--mono);font-size:12.5px}
 .next li > div{margin-top:2px}
@@ -392,3 +392,10 @@ details.inline .tree{margin-top:8px;max-height:280px;overflow:auto;white-space:p
   .projectbtn{order:3;flex:1 1 100%;max-width:none;margin:0;justify-content:flex-start}
   .projectbtn b{flex:1;text-align:left}
 }
+
+/* ---------- Ausschnitt je Screenshot, Zusatzfelder ---------- */
+.shotopts .mini{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-2);margin:6px 0}
+.shotopts .mini span{flex:0 0 76px}
+.shotopts .mini input{flex:1;min-width:0}
+.row > .grow2{flex:2.2}
+.noterow .settag{flex:none;font-family:var(--mono);font-size:10.5px;color:var(--ink-2);border:1px solid var(--line);border-radius:999px;padding:1px 7px}
