@@ -222,16 +222,122 @@ test("Eigenes Layout gilt nur für den einen Screenshot", async ({ page }) => {
   await expect.poll(() => pixel(page, 0)).not.toEqual([255, 0, 0]);
 });
 
-test("Tablet-Format landet im passenden Ordner", async ({ page }) => {
+test("Phone und Tablet im selben Projekt: eigene Screenshots, ein Export mit beiden Ordnern", async ({ page }) => {
   await open(page);
   await addShots(page, 2);
-  await page.locator("#preset").selectOption("1600x2560");
+  await captions(page).nth(0).fill("Phone-Caption");
+
+  // Anderes Gerät, anderer Satz: die Liste ist zunächst leer.
+  await page.locator("#deviceset").selectOption("tenInchScreenshots");
+  await expect(page.locator(".shotrow")).toHaveCount(0);
+  await expect(page.locator("#presetfield")).toBeHidden();
+  await page.locator("#file").setInputFiles([await png(page, "t1.png", { w: 1600, h: 2560 }), await png(page, "t2.png", { w: 1600, h: 2560, colour: "#C2185B" }), await png(page, "t3.png", { w: 1600, h: 2560 })]);
+  await expect(page.locator(".shotrow")).toHaveCount(3);
+  await captions(page).nth(0).fill("Tablet-Caption");
+  expect(await page.locator("#sheet canvas").first().evaluate((c) => [c.width, c.height])).toEqual([1600, 2560]);
+
+  await page.locator("#deviceset").selectOption("phoneScreenshots");
+  await expect(page.locator(".shotrow")).toHaveCount(2);
+  await expect(captions(page).nth(0)).toHaveValue("Phone-Caption");
+
   await fillTexts(page);
+  await page.locator("#mVideo").fill("https://www.youtube.com/watch?v=abcdefghijk");
+  await page.locator("#mWhats").fill("Dunkelmodus.");
+  await page.locator("#mVersionCode").fill("42");
+  await page.locator("#tab-brief").click();
+  await expect(page.locator(".noterow")).toHaveCount(5);
   await page.locator("#tab-export").click();
+  await expect(page.locator("#tree")).toContainText("phoneScreenshots/");
   await expect(page.locator("#tree")).toContainText("tenInchScreenshots/");
-  const { files } = await downloadZip(page, "#zipmeta");
-  expect(files).toContain("fastlane/metadata/android/de-DE/images/tenInchScreenshots/1_screenshot.jpg");
-  expect(files.some((f) => f.includes("phoneScreenshots"))).toBe(false);
+  const { files, zip } = await downloadZip(page, "#zipmeta");
+  const base = "fastlane/metadata/android/de-DE/";
+  expect(files.filter((f) => f.includes("phoneScreenshots")).length).toBe(2);
+  expect(files.filter((f) => f.includes("tenInchScreenshots")).length).toBe(3);
+  expect(await zip.file(base + "video.txt").async("string")).toBe("https://www.youtube.com/watch?v=abcdefghijk\n");
+  expect(await zip.file(base + "changelogs/42.txt").async("string")).toBe("Dunkelmodus.\n");
+  expect(await zip.file(base + "changelogs/default.txt").async("string")).toBe("Dunkelmodus.\n");
+  // JPEG-Kopf: Die Tablet-Bilder sind wirklich 1600 × 2560, die Phone-Bilder 1080 × 1920.
+  const size = async (name) => {
+    const buf = await zip.file(base + name).async("nodebuffer");
+    for (let i = 2; i < buf.length - 9;) {
+      if (buf[i] !== 0xff) { i++; continue; }
+      if (buf[i + 1] >= 0xc0 && buf[i + 1] <= 0xc3) return [buf.readUInt16BE(i + 7), buf.readUInt16BE(i + 5)];
+      i += 2 + buf.readUInt16BE(i + 2);
+    }
+    return null;
+  };
+  expect(await size("images/phoneScreenshots/1_screenshot.jpg")).toEqual([1080, 1920]);
+  expect(await size("images/tenInchScreenshots/1_screenshot.jpg")).toEqual([1600, 2560]);
+  // Nach dem Export steht wieder das vorher gewählte Gerät da.
+  await expect(page.locator("#deviceset")).toHaveValue("phoneScreenshots");
+
+  // Beides überlebt das Neuladen.
+  await settle(page);
+  await page.reload();
+  await page.waitForSelector("html[data-ready]");
+  await expect(page.locator(".shotrow")).toHaveCount(2);
+  await page.locator("#tab-shots").click();
+  await page.locator("#deviceset").selectOption("tenInchScreenshots");
+  await expect(page.locator(".shotrow")).toHaveCount(3);
+  await expect(captions(page).nth(0)).toHaveValue("Tablet-Caption");
+});
+
+test("Querformat, Ausschnitt und Textausrichtung wirken auf das Bild", async ({ page }) => {
+  await open(page);
+  await addShots(page, 2);
+  const shape = () => page.locator("#sheet canvas").first().evaluate((c) => [c.width, c.height]);
+  expect(await shape()).toEqual([1080, 1920]);
+  await page.locator("#orient").selectOption("landscape");
+  await expect.poll(shape).toEqual([1920, 1080]);
+  await page.locator("#preset").selectOption("1242x2208");
+  await expect.poll(shape).toEqual([2208, 1242]);
+  await page.locator("#orient").selectOption("portrait");
+  await page.locator("#preset").selectOption("1080x1920");
+  await expect.poll(shape).toEqual([1080, 1920]);
+
+  // Ausschnitt vergrößern verändert nur diesen Screenshot.
+  const fingerprint = (index) => page.evaluate((index) => {
+    const canvas = document.querySelectorAll("#sheet canvas")[index];
+    const probe = document.createElement("canvas");
+    probe.width = 24; probe.height = 42;
+    const ctx = probe.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(canvas, 0, 0, 24, 42);
+    return Array.from(ctx.getImageData(0, 0, 24, 42).data).join(",");
+  }, index);
+  const before = [await fingerprint(0), await fingerprint(1)];
+  const row = page.locator(".shotrow").nth(0);
+  await row.locator("summary").click();
+  await row.getByLabel("Vergrößern für Screenshot 1").fill("200");
+  await row.getByLabel("Ausschnitt für Screenshot 1").fill("100");
+  await expect.poll(() => fingerprint(0)).not.toBe(before[0]);
+  expect(await fingerprint(1)).toBe(before[1]);
+  await expect(row.locator("summary")).toContainText("aktiv");
+
+  // Linksbündige Caption: links vom Text ist Hintergrund, in der Mitte nicht mehr nur Hintergrund.
+  await captions(page).nth(1).fill("MMMMMM");
+  const centred = await fingerprint(1);
+  await page.locator("#capalign").selectOption("left");
+  await expect.poll(() => fingerprint(1)).not.toBe(centred);
+});
+
+test("Projektdatei mit Tablet-Zielformat der Vorversion landet im Tablet-Satz", async ({ page }) => {
+  await open(page);
+  const shot = await png(page, "alt.png", { w: 1600, h: 2560 });
+  const image = "data:image/png;base64," + shot.buffer.toString("base64");
+  const old = {
+    version: 4, settings: { preset: "1600x2560" }, locale: "de-DE", locales: ["de-DE"],
+    texts: { "de-DE": { mTitle: "Tablet-App", mShort: "", mFull: "", mWhats: "", ftitle: "", fsub: "", alts: [] } },
+    shots: [{ captions: { "de-DE": { headline: "Alt", sub: "" } }, image }, { captions: {}, image }],
+  };
+  await page.locator("#projfile").setInputFiles({ name: "tablet-projekt.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(old)) });
+  await expect(page.locator("#projectname")).toHaveText("Tablet-App");
+  await page.locator("#tab-shots").click();
+  await expect(page.locator("#deviceset")).toHaveValue("tenInchScreenshots");
+  await expect(page.locator("#preset")).toHaveValue("1080x1920");
+  await expect(page.locator(".shotrow")).toHaveCount(2);
+  await expect(captions(page).nth(0)).toHaveValue("Alt");
+  await page.locator("#deviceset").selectOption("phoneScreenshots");
+  await expect(page.locator(".shotrow")).toHaveCount(0);
 });
 
 test("Sprachen: eigene Texte und Captions je Sprache, Export enthält alle", async ({ page }) => {
@@ -463,6 +569,17 @@ test("Textprüfung meldet Verstöße mit Fundstelle", async ({ page }) => {
   await page.locator("#mTitle").fill("x".repeat(31));
   await expect(page.locator("#cTitle")).toHaveText("31 / 30");
   await expect(lint).toContainText("App-Name ist zu lang");
+
+  // Andere Sprachen und die Zusatzfelder werden ebenfalls geprüft.
+  await page.locator("#mTitle").fill("Tagwerk");
+  await page.locator("#mShort").fill("La meilleure app, gratuite. Téléchargez !");
+  await expect(lint).toContainText("meilleure");
+  await expect(lint).toContainText("gratuite");
+  await expect(lint).toContainText("Téléchargez");
+  await page.locator("#mVideo").fill("https://vimeo.com/123");
+  await expect(lint).toContainText("kein YouTube-Link");
+  await page.locator("#mVersionCode").fill("1.2.0");
+  await expect(lint).toContainText("Versionscode ist keine Zahl");
 });
 
 test("schmales Fenster: kein waagerechtes Scrollen", async ({ page }) => {
@@ -628,11 +745,196 @@ test("Tablet-Formate bekommen einen Tablet-Rahmen", async ({ page }) => {
     return { height: (bottom - top) / canvas.height, width: canvas.width, canvasRatio: canvas.height / canvas.width };
   });
   const phone = await deviceBox();
-  await page.locator("#preset").selectOption("1600x2560");
+  await page.locator("#deviceset").selectOption("tenInchScreenshots");
+  await page.locator("#file").setInputFiles([await png(page, "t1.png", { w: 1600, h: 2560 }), await png(page, "t2.png", { w: 1600, h: 2560 })]);
+  await expect(page.locator(".shotrow")).toHaveCount(2);
   await expect.poll(async () => (await deviceBox()).width).toBe(1600);
   const tablet = await deviceBox();
   // Gerät bei 76 % Breite: Handy rund 2,17 × Breite hoch, Tablet 1,6 ×.
   expect(phone.height * phone.canvasRatio / 0.76).toBeGreaterThan(1.9);
   expect(tablet.height * tablet.canvasRatio / 0.76).toBeGreaterThan(1.5);
   expect(tablet.height * tablet.canvasRatio / 0.76).toBeLessThan(1.7);
+});
+
+/* ------------------------------------------------------------------ *
+ * Server-Funktionen (gegen den nachgestellten Server-Teil in serve.js)
+ * ------------------------------------------------------------------ */
+
+test("Vorschläge per Knopf füllen Texte und Captions", async ({ page }) => {
+  await open(page);
+  await addShots(page, 2);
+  await page.locator("#tab-brief").click();
+  await expect(page.locator("#aibox")).toBeVisible();
+  await page.locator("#bWhat").fill("Erfasst Arbeitszeiten und schreibt daraus Rechnungen.");
+  await page.locator("#bFeatures").fill("Rechnung als PDF");
+  await page.locator("#aiGo").click();
+  await expect(page.locator("#panel-text")).toBeVisible();
+  await expect(page.locator("#mTitle")).toHaveValue("Stundenwerk");
+  await expect(page.locator("#mFull")).toHaveValue("Erfasse deine Zeiten.\n\n• Rechnung als PDF");
+  await expect(page.locator("#titlealts .altchip")).toHaveText("Zeitwerk");
+  await page.locator("#tab-shots").click();
+  await expect(captions(page).nth(1)).toHaveValue("Vorschlag 2");
+});
+
+test("Direkt veröffentlichen: Probelauf und Veröffentlichen schicken alles in der richtigen Reihenfolge", async ({ page, request }) => {
+  await open(page);
+  const pkg = "de.test.veroeffentlichen" + Date.now();
+  await page.locator("#tab-export").click();
+  await expect(page.locator("#publishcard")).toBeVisible();
+
+  // Ohne Paketnamen und mit offener Checkliste geht nichts an den Server.
+  await page.locator("#pubcheck").click();
+  await expect(page.locator(".toast.error").last()).toContainText("Paketnamen");
+  await page.locator("#tab-text").click();
+  await page.locator("#mPackage").fill(pkg);
+  await page.locator("#tab-export").click();
+  await page.locator("#pubcheck").click();
+  await expect(page.locator(".toast.error").last()).toContainText("Erst die Checkliste abschließen");
+  expect(await (await request.get("/__test/publish?package=" + pkg)).json()).toEqual([]);
+
+  await addLogo(page);
+  await addShots(page, 2);
+  await fillTexts(page, { title: "Tagwerk" });
+  await page.locator("#tab-export").click();
+  await page.locator("#pubcheck").click();
+  await expect(page.locator("#pubstate")).toContainText("Probelauf", { timeout: 15000 });
+  await expect(page.locator("#pubstate")).toContainText("Nichts wurde verändert");
+  expect(await (await request.get("/__test/publish?package=" + pkg)).json()).toEqual([
+    "start",
+    "listing de-DE Tagwerk",
+    "image de-DE icon first image/png png",
+    "image de-DE featureGraphic first image/jpeg jpeg",
+    "image de-DE phoneScreenshots first image/jpeg jpeg",
+    "image de-DE phoneScreenshots image/jpeg jpeg",
+    "finish check",
+  ]);
+
+  // Veröffentlichen fragt nach — Abbrechen schickt nichts.
+  page.once("dialog", (d) => d.dismiss());
+  await page.locator("#pubgo").click();
+  expect((await (await request.get("/__test/publish?package=" + pkg)).json()).length).toBe(7);
+  page.once("dialog", (d) => { expect(d.message()).toContain(pkg); d.accept(); });
+  await page.locator("#pubgo").click();
+  await expect(page.locator("#pubstate")).toContainText("Veröffentlicht um", { timeout: 15000 });
+  const calls = await (await request.get("/__test/publish?package=" + pkg)).json();
+  expect(calls.length).toBe(14);
+  expect(calls[13]).toBe("finish commit");
+});
+
+test("Direkt veröffentlichen: lehnt Google ab, wird der Vorgang verworfen und der Grund gezeigt", async ({ page, request }) => {
+  await open(page);
+  const pkg = "de.test.kaputt" + Date.now();
+  await addLogo(page);
+  await addShots(page, 2);
+  await fillTexts(page);
+  await page.locator("#mPackage").fill(pkg);
+  await page.locator("#tab-export").click();
+  await page.locator("#pubcheck").click();
+  await expect(page.locator(".toast.error").last()).toContainText("Screenshot zu klein", { timeout: 15000 });
+  await expect(page.locator("#pubstate")).toContainText("Abgebrochen");
+  const calls = await (await request.get("/__test/publish?package=" + pkg)).json();
+  expect(calls.slice(-2)).toEqual(["finish abgelehnt", "abort"]);
+  test.info().problems.length = 0;   // der 502 des nachgestellten Servers ist hier gewollt
+});
+
+test("Team-Ablage: ablegen, in einem anderen Browser öffnen, Konflikt bemerken, löschen", async ({ page, browser }) => {
+  const name = "Teamprojekt " + Date.now();
+  await open(page);
+  await addShots(page, 2);
+  await captions(page).nth(0).fill("Aus dem Team");
+  await fillTexts(page, { title: name });
+  await settle(page);
+  await page.locator("#projectbtn").click();
+  await expect(page.locator("#teambox")).toBeVisible();
+  await page.locator("#teamput").click();
+  const row = page.locator("#teamlist li", { hasText: name });
+  await expect(row).toContainText("test.nutzer@example.com");
+
+  // Zweites Mitglied: eigener Browser, leere Ablage.
+  const other = await (await browser.newContext()).newPage();
+  await open(other);
+  await other.locator("#projectbtn").click();
+  await other.getByRole("button", { name: `${name} aus dem Team öffnen` }).click();
+  await expect(other.locator("#projectdialog")).toBeHidden();
+  await expect(other.locator("#projectname")).toHaveText(name);
+  await other.locator("#tab-shots").click();
+  await expect(other.locator(".shotrow")).toHaveCount(2);
+  await expect(captions(other).nth(0)).toHaveValue("Aus dem Team");
+
+  // Das zweite Mitglied ändert und legt ab — es kennt den Stand, also ohne Rückfrage.
+  await captions(other).nth(0).fill("Vom zweiten Mitglied");
+  await settle(other);
+  await other.locator("#projectbtn").click();
+  await other.locator("#teamput").click();
+  await expect(other.locator(".toast").last()).toContainText("liegt jetzt in der Team-Ablage");
+
+  // Das erste Mitglied legt seinen alten Stand ab: Rückfrage, Abbruch lässt alles wie es ist.
+  let asked = "";
+  page.once("dialog", (d) => { asked = d.message(); d.dismiss(); });
+  await page.locator("#teamput").click();
+  await expect.poll(() => asked).toContain("neu abgelegt");
+  test.info().problems.length = 0;   // der 409 ist hier gewollt
+
+  // Stattdessen den neuen Stand holen: ersetzt nach Rückfrage die eigene Kopie.
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: `${name} aus dem Team öffnen` }).click();
+  await expect(page.locator("#projectdialog")).toBeHidden();
+  await page.locator("#tab-shots").click();
+  await expect(captions(page).nth(0)).toHaveValue("Vom zweiten Mitglied");
+  await page.locator("#projectbtn").click();
+  await expect(page.locator("#projectlist li")).toHaveCount(1);
+
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: `${name} aus dem Team löschen` }).click();
+  await expect(page.locator("#teamlist li", { hasText: name })).toHaveCount(0);
+  await other.context().close();
+});
+
+test("Speichern während eines Exports hält das gewählte Gerät und die Sprache fest, nicht die gerade gerenderten", async ({ page }) => {
+  await open(page);
+  await addShots(page, 2);
+  await page.locator("#deviceset").selectOption("tenInchScreenshots");
+  await page.locator("#file").setInputFiles([await png(page, "t1.png", { w: 1600, h: 2560 }), await png(page, "t2.png", { w: 1600, h: 2560 })]);
+  await page.locator("#deviceset").selectOption("phoneScreenshots");
+  await fillTexts(page);
+  await page.locator("#langmanage").click();
+  await page.locator("#langadd").selectOption("en-US");
+  await page.locator("#langaddbtn").click();
+  await page.locator("#langclose").click();
+  await page.locator("#langswitch").selectOption("de-DE");
+  await settle(page);
+  await page.locator("#tab-export").click();
+
+  // Eine Änderung genau vor dem Export: das automatische Speichern fällt in den Export hinein.
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.evaluate(() => {
+      const field = document.getElementById("mPackage");
+      field.value = "de.beispiel.export";
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+      // Den Export künstlich verlangsamen, damit das Speichern sicher mittendrin auslöst.
+      const toBlob = HTMLCanvasElement.prototype.toBlob;
+      HTMLCanvasElement.prototype.toBlob = function (cb, ...rest) {
+        setTimeout(() => toBlob.call(this, cb, ...rest), 150);
+      };
+      document.getElementById("zipmeta").click();
+    }),
+  ]);
+  expect(download.suggestedFilename()).toBe("play-listing-2-sprachen.zip");
+  await settle(page);
+
+  await page.reload();
+  await page.waitForSelector("html[data-ready]");
+  await expect(page.locator("#mPackage")).toHaveValue("de.beispiel.export");
+  await expect(page.locator("#langswitch")).toHaveValue("de-DE");
+  await page.locator("#tab-shots").click();
+  await expect(page.locator("#deviceset")).toHaveValue("phoneScreenshots");
+  await expect(page.locator(".shotrow")).toHaveCount(2);
+  // Und der Verlauf kennt keinen Zwischenstand aus dem Export.
+  await page.locator("#tab-text").click();
+  await page.locator("#mPackage").fill("de.beispiel.danach");
+  await settle(page);
+  await page.locator("#undo").click();
+  await expect(page.locator("#mPackage")).toHaveValue("de.beispiel.export");
+  await expect(page.locator("#langswitch")).toHaveValue("de-DE");
 });

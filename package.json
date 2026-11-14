@@ -1,0 +1,14 @@
+{
+  "name": "listing-werkbank",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Abhängigkeiten des Server-Teils der Listing-Werkbank (docs/_worker.js).",
+  "license": "UNLICENSED",
+  "scripts": {
+    "test": "node --test tests/worker/worker.test.mjs"
+  },
+  "engines": { "node": ">=22" },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0"
+  }
+}

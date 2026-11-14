@@ -41,18 +41,29 @@
   // Einstellungen, die für das ganze Projekt gelten. Zugleich die Whitelist
   // beim Laden — eine fremde Datei darf keine beliebigen Elemente beschreiben.
   const SETTINGS = [
-    "layout", "preset", "pano", "guides", "bg1", "bg2", "textcolor", "frame", "scale",
-    "statusbar", "croptop", "headsize",
+    "layout", "deviceset", "preset", "orient", "pano", "guides", "bg1", "bg2", "textcolor", "frame", "scale",
+    "statusbar", "croptop", "headsize", "capalign",
     "falign", "fusericon", "fdevice", "fbg1", "fbg2", "ftextcolor",
     "ibg1", "ibg2", "izoom", "imono",
-    "mPackage", "mDev",
+    "mPackage", "mDev", "mVersionCode",
     "bWhat", "bAudience", "bFeatures", "bTone", "bKeywords", "bAvoid", "bNews",
   ];
   // Felder, die es je Sprache gibt. Die Eingabefelder zeigen immer die aktive
   // Sprache; state.texts hält alle.
-  const LOCALE_FIELDS = ["mTitle", "mShort", "mFull", "mWhats", "ftitle", "fsub"];
-  const REPAINT_SHOTS = new Set(["layout", "bg1", "bg2", "textcolor", "frame", "scale", "statusbar", "croptop", "headsize"]);
-  const REBUILD_PLATES = new Set(["pano", "guides", "preset"]);
+  const LOCALE_FIELDS = ["mTitle", "mShort", "mFull", "mWhats", "mVideo", "ftitle", "fsub"];
+  const REPAINT_SHOTS = new Set(["layout", "bg1", "bg2", "textcolor", "frame", "scale", "statusbar", "croptop", "headsize", "capalign"]);
+  const REBUILD_PLATES = new Set(["pano", "guides", "preset", "deviceset", "orient"]);
+
+  // Gerätesätze: je Gerät eigene Screenshots und ein eigener Ordner im Export.
+  // Der Schlüssel ist der Ordnername, den Play und Fastlane erwarten.
+  const SETS = {
+    phoneScreenshots: { label: "Phone", device: "phone" },
+    sevenInchScreenshots: { label: 'Tablet 7"', device: "tablet", size: [1200, 1920] },
+    tenInchScreenshots: { label: 'Tablet 10"', device: "tablet", size: [1600, 2560] },
+  };
+  const SET_KEYS = Object.keys(SETS);
+  // Zielformate, die vor den Gerätesätzen im Feld „preset“ standen.
+  const LEGACY_PRESETS = { "1200x1920": "sevenInchScreenshots", "1600x2560": "tenInchScreenshots" };
 
   const BRAND_FONT = "ListingBrand";
   const FONT_HEAD = "'Bricolage Grotesque','DM Sans',sans-serif";
@@ -67,8 +78,12 @@
   // Ein Screenshot ist ein Asset plus { captions: {sprache: {headline, sub}},
   // note, layout, bg, canvas }.
   const emptyTexts = () => ({ ...Object.fromEntries(LOCALE_FIELDS.map((id) => [id, ""])), alts: [] });
+  const emptySets = () => Object.fromEntries(SET_KEYS.map((key) => [key, []]));
   const state = {
-    shots: [], iconLogo: null, featLogo: null, font: null,
+    sets: emptySets(), iconLogo: null, featLogo: null, font: null,
+    // „shots“ ist immer der Satz des gerade gewählten Geräts.
+    get shots() { return this.sets[shotDir()]; },
+    set shots(list) { this.sets[shotDir()] = list; },
     locale: DEFAULT_LOCALE, locales: [DEFAULT_LOCALE], texts: { [DEFAULT_LOCALE]: emptyTexts() },
   };
   let nextId = 1;
@@ -76,6 +91,9 @@
   const $ = (id) => document.getElementById(id);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
   const clone = (value) => JSON.parse(JSON.stringify(value));
+
+  // Alle Screenshots aller Geräte, Phone zuerst.
+  const allShots = () => SET_KEYS.flatMap((key) => state.sets[key]);
 
   function caption(shot, locale = state.locale) {
     return shot.captions[locale] || (shot.captions[locale] = { headline: "", sub: "" });
@@ -176,7 +194,7 @@
     ensureLocale(locale);
     if (copy) {
       state.texts[locale] = clone(state.texts[from]);
-      state.shots.forEach((shot) => { shot.captions[locale] = { ...caption(shot, from) }; });
+      allShots().forEach((shot) => { shot.captions[locale] = { ...caption(shot, from) }; });
     }
     switchLocale(locale);
     toast(copy
@@ -190,7 +208,7 @@
     if (locale === state.locale) switchLocale(state.locales.find((l) => l !== locale));
     state.locales = state.locales.filter((l) => l !== locale);
     delete state.texts[locale];
-    state.shots.forEach((shot) => { delete shot.captions[locale]; });
+    allShots().forEach((shot) => { delete shot.captions[locale]; });
     renderLocaleUi();
     touch();
   }
@@ -507,25 +525,28 @@
     ctx.textBaseline = "middle";
     ctx.textAlign = "left";
     const fs = h * 0.42, midY = y + h * 0.55;
+    // Alle Maße hängen an der Schriftgröße, nicht an der Bildschirmbreite —
+    // so sehen die Symbole im Hoch- und Querformat gleich aus.
+    const k = fs / 0.0346, right = x + w;
     ctx.font = `500 ${fs}px ${FONT_BODY}`;
-    ctx.fillText("9:41", x + w * 0.055, midY);
+    ctx.fillText("9:41", x + k * 0.055, midY);
     // Empfang
-    const bx = x + w * 0.79, bw = w * 0.011, gap = w * 0.007, base = midY + fs * 0.42;
+    const bx = right - k * 0.21, bw = k * 0.011, gap = k * 0.007, base = midY + fs * 0.42;
     for (let i = 0; i < 4; i++) {
       const bh = fs * (0.3 + i * 0.19);
       ctx.fillRect(bx + i * (bw + gap), base - bh, bw, bh);
     }
     // WLAN
-    const wx = x + w * 0.875, wy = midY + fs * 0.30;
+    const wx = right - k * 0.125, wy = midY + fs * 0.30;
     ctx.lineWidth = fs * 0.10;
-    for (let k = 0; k < 3; k++) {
+    for (let n = 0; n < 3; n++) {
       ctx.beginPath();
-      ctx.arc(wx, wy, fs * (0.20 + k * 0.16), Math.PI * 1.25, Math.PI * 1.75);
+      ctx.arc(wx, wy, fs * (0.20 + n * 0.16), Math.PI * 1.25, Math.PI * 1.75);
       ctx.stroke();
     }
     ctx.beginPath(); ctx.arc(wx, wy, fs * 0.06, 0, Math.PI * 2); ctx.fill();
     // Akku
-    const ex = x + w * 0.915, ew = w * 0.048, eh = fs * 0.52;
+    const ex = right - k * 0.085, ew = k * 0.048, eh = fs * 0.52;
     ctx.globalAlpha = 0.45;
     ctx.lineWidth = Math.max(1, fs * 0.07);
     roundRect(ctx, ex, midY - eh / 2, ew, eh, eh * 0.28); ctx.stroke();
@@ -553,33 +574,41 @@
     lumCache.set(img, { crop: cropTop, value });
     return value;
   }
-  // Cover-Fit, aber ohne den obersten Streifen des Quellbilds.
-  function drawScreen(ctx, img, x, y, w, h, cropTop) {
+  // Cover-Fit, aber ohne den obersten Streifen des Quellbilds. `view` kann
+  // den Ausschnitt vergrößern (zoom ≥ 1) und senkrecht verschieben (pos 0…1).
+  function drawScreen(ctx, img, x, y, w, h, cropTop, view) {
+    const zoom = Math.max(1, Number(view && view.zoom) || 1);
+    const pos = Math.min(1, Math.max(0, Number(view && view.pos) || 0));
     const srcY = img.height * cropTop, srcH = img.height - srcY;
     const ir = img.width / srcH, tr = w / h;
-    let sw, sh, sx;
-    if (ir > tr) { sh = srcH; sw = sh * tr; sx = (img.width - sw) / 2; }
-    else { sw = img.width; sh = sw / tr; sx = 0; }
-    ctx.drawImage(img, sx, srcY, sw, sh, x, y, w, h);
+    let sw, sh;
+    if (ir > tr) { sh = srcH; sw = sh * tr; }
+    else { sw = img.width; sh = sw / tr; }
+    sw /= zoom; sh /= zoom;
+    ctx.drawImage(img, (img.width - sw) / 2, srcY + (srcH - sh) * pos, sw, sh, x, y, w, h);
   }
 
-  // Zum Zielformat passend: Handy oder Tablet.
+  // Zum gewählten Gerät passend: Handy oder Tablet.
   function device() {
-    return DEVICES[$("preset").selectedOptions[0].dataset.device] || DEVICES.phone;
+    return DEVICES[SETS[shotDir()].device];
   }
+  const isLandscape = () => $("orient").value === "landscape";
+  // Höhe geteilt durch Breite des Geräts in der gewählten Ausrichtung.
+  const deviceAspect = () => (isLandscape() ? 1 / device().ratio : device().ratio);
 
-  function drawDevice(ctx, img, cx, cy, w, rot, style, framed) {
-    const d = device(), h = w * d.ratio;
+  function drawDevice(ctx, img, cx, cy, w, rot, style, framed, view) {
+    const d = device(), landscape = isLandscape(), h = w * deviceAspect();
+    const short = Math.min(w, h), long = Math.max(w, h);
     ctx.save();
     ctx.translate(cx, cy);
     if (rot) ctx.rotate(rot);
     const x = -w / 2, y = -h / 2;
-    const bezel = framed ? Math.max(5, w * d.bezel) : 0;
-    const outerR = w * d.radius;
+    const bezel = framed ? Math.max(5, short * d.bezel) : 0;
+    const outerR = short * d.radius;
     const innerR = framed ? Math.max(3, outerR - bezel * 0.7) : outerR * 0.75;
 
     ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,.45)"; ctx.shadowBlur = w * 0.09; ctx.shadowOffsetY = w * 0.035;
+    ctx.shadowColor = "rgba(0,0,0,.45)"; ctx.shadowBlur = short * 0.09; ctx.shadowOffsetY = short * 0.035;
     ctx.fillStyle = framed ? (style === "dark" ? "#0C0F13" : "#E9EBEE") : "#FFFFFF";
     roundRect(ctx, x, y, w, h, framed ? outerR : innerR); ctx.fill();
     ctx.restore();
@@ -589,13 +618,16 @@
     roundRect(ctx, sx, sy, sw, sh, innerR); ctx.clip();
     ctx.fillStyle = "#FFF"; ctx.fillRect(sx, sy, sw, sh);
     const mode = $("statusbar").value;
+    // Die Statusleiste ist in beiden Ausrichtungen gleich dick — im
+    // Querformat nimmt sie deshalb einen größeren Teil der Bildhöhe ein.
+    const strip = landscape ? d.ratio : 1;
     let crop = parseInt($("croptop").value, 10) / 100;
-    if (mode !== "off") crop = Math.max(crop, d.crop);
+    if (mode !== "off") crop = Math.max(crop, d.crop * strip);
     if (img) {
-      drawScreen(ctx, img, sx, sy, sw, sh, crop);
+      drawScreen(ctx, img, sx, sy, sw, sh, crop, view);
       if (mode !== "off") {
         const dark = mode === "dark" || (mode === "auto" && topLuminance(img, crop) > 0.55);
-        drawStatusBar(ctx, sx, sy, sw, sh * d.status, dark);
+        drawStatusBar(ctx, sx, sy, sw, Math.max(sw, sh) * d.status, dark);
       }
     }
     const sheen = ctx.createLinearGradient(sx, sy, sx + sw * 0.7, sy + sh * 0.45);
@@ -605,20 +637,22 @@
 
     if (framed) {
       ctx.strokeStyle = style === "dark" ? "rgba(255,255,255,.18)" : "rgba(0,0,0,.16)";
-      ctx.lineWidth = Math.max(1, w * 0.0022);
+      ctx.lineWidth = Math.max(1, short * 0.0022);
       roundRect(ctx, x, y, w, h, outerR); ctx.stroke();
-      if (d.hole) {
-        // Handy: Kamera als Loch im Bildschirm.
-        ctx.fillStyle = "rgba(0,0,0,.82)";
-        ctx.beginPath(); ctx.arc(0, y + bezel + w * 0.042, w * 0.016, 0, Math.PI * 2); ctx.fill();
-      } else {
-        // Tablet: Kamera sitzt im Rahmen.
-        ctx.fillStyle = style === "dark" ? "#2B313A" : "#B4B9C1";
-        ctx.beginPath(); ctx.arc(0, y + bezel / 2, bezel * 0.17, 0, Math.PI * 2); ctx.fill();
-      }
+      // Kamera: beim Handy ein Loch im Bildschirm, beim Tablet im Rahmen.
+      // Im Querformat sitzt sie an der linken Schmalseite.
+      const inset = d.hole ? bezel + short * 0.042 : bezel / 2;
+      const radius = d.hole ? short * 0.016 : bezel * 0.17;
+      ctx.fillStyle = d.hole ? "rgba(0,0,0,.82)" : style === "dark" ? "#2B313A" : "#B4B9C1";
+      ctx.beginPath();
+      if (landscape) ctx.arc(x + inset, 0, radius, 0, Math.PI * 2);
+      else ctx.arc(0, y + inset, radius, 0, Math.PI * 2);
+      ctx.fill();
       if (d.button) {
         ctx.fillStyle = style === "dark" ? "#23282F" : "#C9CDD3";
-        roundRect(ctx, x + w, y + h * 0.20, w * 0.008, h * 0.075, w * 0.004); ctx.fill();
+        if (landscape) roundRect(ctx, x + w * 0.725, y - short * 0.008, long * 0.075, short * 0.008, short * 0.004);
+        else roundRect(ctx, x + w, y + h * 0.20, short * 0.008, long * 0.075, short * 0.004);
+        ctx.fill();
       }
     }
     ctx.restore();
@@ -628,11 +662,13 @@
    * Screenshots
    * ================================================================== */
 
+  // Ordner des gewählten Geräts — zugleich der Schlüssel des Gerätesatzes.
+  const shotDir = () => (SETS[$("deviceset").value] ? $("deviceset").value : SET_KEYS[0]);
   function currentSize() {
-    const [w, h] = $("preset").value.split("x").map(Number);
+    let [w, h] = SETS[shotDir()].size || $("preset").value.split("x").map(Number);
+    if (isLandscape()) [w, h] = [h, w];
     return { w, h };
   }
-  const shotDir = () => $("preset").selectedOptions[0].dataset.dir || "phoneScreenshots";
   const shotName = (i) => `screenshot-${String(i + 1).padStart(2, "0")}.jpg`;
   const isPano = () => $("pano").checked && state.shots.length > 1;
   const headFont = () => (state.font ? `'${BRAND_FONT}',${FONT_HEAD}` : FONT_HEAD);
@@ -642,14 +678,16 @@
     const shot = state.shots[i];
     if (!shot) return;
     const { w: W, h: H } = currentSize();
-    const u = W / 1080, n = state.shots.length, pano = isPano();
+    // Schrift und Abstände richten sich nach der kurzen Seite, damit sie im
+    // Querformat nicht mitwachsen.
+    const u = Math.min(W, H) / 1080, n = state.shots.length, pano = isPano();
     // Im Panorama teilen sich alle Frames einen Hintergrund — eigene
     // Einstellungen einzelner Screenshots ruhen dort.
     const own = !pano && shot.bg;
     const bg1 = own ? shot.bg[0] : $("bg1").value, bg2 = own ? shot.bg[1] : $("bg2").value;
     const textColor = own ? readableOn(mix(bg1, bg2, 0.5)) : $("textcolor").value;
     const frameStyle = $("frame").value, scale = parseInt($("scale").value, 10) / 100;
-    const text = caption(shot), RATIO = device().ratio;
+    const text = caption(shot), RATIO = deviceAspect();
     if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
     const ctx = canvas.getContext("2d");
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -674,7 +712,8 @@
 
     const headPx = parseInt($("headsize").value, 10) * u, subPx = headPx * 0.44, margin = 92 * u;
     const layout = pano ? "caption-top" : (shot.layout || $("layout").value);
-    const alignLeft = layout === "angled";
+    const align = $("capalign").value;
+    const alignLeft = align === "left" || (align === "auto" && layout === "angled");
     const capTop = 118 * u;
 
     function paintCaption(baseY) {
@@ -710,29 +749,32 @@
       const cx = W * 0.60, cy = top + devW * RATIO * 0.46;
       [-1, 0, 1].forEach((d) => {
         const neighbour = state.shots[i + d];
-        if (neighbour) drawDevice(ctx, neighbour.img, cx + d * W, cy, devW, 0, frameStyle, framed);
+        if (neighbour) drawDevice(ctx, neighbour.img, cx + d * W, cy, devW, 0, frameStyle, framed, neighbour);
       });
     } else if (layout === "bleed") {
       devW = W * Math.max(scale, 0.7);
-      drawDevice(ctx, shot.img, W / 2, top + devW * RATIO * 0.46, devW, 0, frameStyle, framed);
+      drawDevice(ctx, shot.img, W / 2, top + devW * RATIO * 0.46, devW, 0, frameStyle, framed, shot);
     } else if (layout === "angled") {
       devW = W * Math.max(scale, 0.66);
-      drawDevice(ctx, shot.img, W * 0.56, top + devW * RATIO * 0.44, devW, -7 * Math.PI / 180, frameStyle, framed);
+      drawDevice(ctx, shot.img, W * 0.56, top + devW * RATIO * 0.44, devW, -7 * Math.PI / 180, frameStyle, framed, shot);
     } else if (layout === "caption-bottom") {
       devW = Math.min(W * scale, (H - capTop - 300 * u) / RATIO);
       const cy = capTop + devW * RATIO / 2;
-      drawDevice(ctx, shot.img, W / 2, cy, devW, 0, frameStyle, framed);
+      drawDevice(ctx, shot.img, W / 2, cy, devW, 0, frameStyle, framed, shot);
       if (hasCaption) paintCaption(cy + devW * RATIO / 2 + 70 * u);
     } else {
       devW = Math.min(W * scale, (H - top - 70 * u) / RATIO);
-      drawDevice(ctx, shot.img, W / 2, top + devW * RATIO / 2, devW, 0, frameStyle, framed);
+      drawDevice(ctx, shot.img, W / 2, top + devW * RATIO / 2, devW, 0, frameStyle, framed, shot);
     }
   }
 
   // Aufklappbare Abweichungen für einen einzelnen Screenshot.
   function shotOptions(shot, no) {
     const summary = el("summary");
-    const label = () => { summary.textContent = "Eigenes Layout" + (shot.layout || shot.bg ? " · aktiv" : ""); };
+    const label = () => {
+      const changed = shot.layout || shot.bg || (shot.zoom || 1) > 1 || (shot.pos || 0) > 0;
+      summary.textContent = "Eigenes Layout" + (changed ? " · aktiv" : "");
+    };
     const layout = el("select", {
       "aria-label": `Anordnung nur für Screenshot ${no}`,
       onchange: (e) => { shot.layout = e.target.value; label(); },
@@ -751,9 +793,19 @@
       type: "checkbox", checked: !!shot.bg,
       onchange: (e) => { shot.bg = e.target.checked ? [c1.value, c2.value] : null; colours.hidden = !shot.bg; label(); },
     });
+    // Ausschnitt des Bildes im Gerät: vergrößern und senkrecht verschieben.
+    const slider = (name, min, max, value, apply) => el("label", { class: "mini" },
+      el("span", { text: name }),
+      el("input", {
+        type: "range", min: String(min), max: String(max), value: String(value),
+        "aria-label": `${name} für Screenshot ${no}`,
+        oninput: (e) => { apply(Number(e.target.value)); label(); },
+      }));
+    const zoom = slider("Vergrößern", 100, 250, Math.round((shot.zoom || 1) * 100), (v) => { shot.zoom = v / 100; });
+    const pos = slider("Ausschnitt", 0, 100, Math.round((shot.pos || 0) * 100), (v) => { shot.pos = v / 100; });
     label();
     return el("details", { class: "shotopts", open: !!shot.open, ontoggle: (e) => { shot.open = e.target.open; } },
-      summary, layout, el("label", { class: "check" }, own, el("span", { text: "Eigener Hintergrund" })), colours);
+      summary, layout, zoom, pos, el("label", { class: "check" }, own, el("span", { text: "Eigener Hintergrund" })), colours);
   }
 
   function renderList() {
@@ -901,7 +953,7 @@
   function newShot(asset, extra = {}) {
     // Vorgaben zuerst: `asset` darf beim Wiederherstellen bereits Notiz und
     // Layout mitbringen. Das Canvas entsteht immer neu.
-    return { captions: {}, note: "", layout: "", bg: null, ...asset, ...extra, canvas: null };
+    return { captions: {}, note: "", layout: "", bg: null, zoom: 1, pos: 0, ...asset, ...extra, canvas: null };
   }
   async function addShots(files) {
     let images = files.filter(isRaster);
@@ -984,7 +1036,8 @@
       const glow = ctx.createRadialGradient(W * 0.80, H * 0.5, 10, W * 0.80, H * 0.5, H * 0.75);
       glow.addColorStop(0, "rgba(255,255,255,.13)"); glow.addColorStop(1, "rgba(255,255,255,0)");
       ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
-      drawDevice(ctx, state.shots[0].img, W * 0.80, H * 0.60, device().feature, -9 * Math.PI / 180, $("frame").value, true);
+      drawDevice(ctx, state.shots[0].img, W * 0.80, H * 0.60, device().feature * (isLandscape() ? 1.7 : 1),
+        -9 * Math.PI / 180, $("frame").value, true, state.shots[0]);
       textRight = W * 0.63;
     }
     ctx.textBaseline = "top";
@@ -1156,11 +1209,20 @@
   // Versalien sind in der langen Beschreibung unkritisch, im Titel nicht.
   const RULES = [
     { in: ["title", "short", "full"],
-      re: /(?<!\p{L})(beste[rnms]?|best|nummer\s*1|nr\.?\s*1|#1|top[- ]?app|marktführer|weltweit führend|führende[rns]?)(?!\p{L})/giu,
+      re: new RegExp("(?<!\\p{L})(" + [
+        "beste[rnms]?", "best", "nummer\\s*1", "nr\\.?\\s*1", "#1", "top[- ]?app", "marktführer", "weltweit führend", "führende[rns]?",
+        "number\\s*one", "no\\.?\\s*1", "leading",
+        "meilleure?s?", "numéro\\s*1", "n°\\s*1", "mejor(?:es)?", "número\\s*1", "nº\\s*1", "migliore", "numero\\s*1",
+        "najlepsz[aye]", "numer\\s*1", "melhor(?:es)?", "en iyi", "1\\s*numara",
+      ].join("|") + ")(?!\\p{L})", "giu"),
       title: "Superlativ oder Ranking-Behauptung",
       note: "Play untersagt Behauptungen über Platzierungen und unbelegte Bestwerte im Eintrag." },
     { in: ["title", "short"],
-      re: /(?<!\p{L})(kostenlos|gratis|umsonst|free|rabatt|sale|jetzt sparen|\d+\s*%\s*(rabatt|off))(?!\p{L})/giu,
+      re: new RegExp("(?<!\\p{L})(" + [
+        "kostenlos", "gratis", "umsonst", "free", "rabatt", "sale", "jetzt sparen", "\\d+\\s*%\\s*(?:rabatt|off)",
+        "gratuite?s?", "promo(?:tion)?", "oferta", "gratuito", "offerta", "korting", "za darmo", "darmow[aye]", "promocja",
+        "grátis", "promoção", "ücretsiz", "indirim",
+      ].join("|") + ")(?!\\p{L})", "giu"),
       title: "Preis- oder Werbeaussage",
       note: "Preise und Aktionen gehören nicht in Name und Kurzbeschreibung — sie veralten und verstoßen gegen die Richtlinien." },
     { in: ["title", "short", "full"], re: /!{2,}/g,
@@ -1172,7 +1234,10 @@
     { in: ["short", "full"], re: new RegExp(`(?:${EMOJI}\\s*){3,}`, "gu"),
       title: "Emoji-Kette", note: "Drei oder mehr Emoji hintereinander gelten als dekoratives Rauschen." },
     { in: ["title", "short"],
-      re: /(?<!\p{L})(download|downloaden|installiere?n?\s+jetzt|jetzt\s+(herunterladen|installieren))(?!\p{L})/giu,
+      re: new RegExp("(?<!\\p{L})(" + [
+        "download", "downloaden", "installiere?n?\\s+jetzt", "jetzt\\s+(?:herunterladen|installieren)", "install\\s+now",
+        "téléchargez", "descarga(?:r)?\\s+ahora", "scarica\\s+ora", "pobierz\\s+teraz", "baixe\\s+agora", "hemen\\s+indir",
+      ].join("|") + ")(?!\\p{L})", "giu"),
       title: "Handlungsaufforderung", note: "Der Installieren-Button steht direkt daneben — der Satz kostet nur Platz." },
   ];
 
@@ -1210,6 +1275,16 @@
     if ((values.full.split(/\n\s*\n/)[0] || "").length > 165) {
       found.push({ level: "info", title: "Erster Absatz wird abgeschnitten",
         note: "Sichtbar sind etwa drei Zeilen. Das Versprechen sollte in die ersten rund 165 Zeichen passen." });
+    }
+    const video = $("mVideo").value.trim();
+    if (video && !/^https:\/\/(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)[\w-]{6,}/.test(video)) {
+      found.push({ level: "warn", title: "Vorschauvideo ist kein YouTube-Link",
+        note: "Play nimmt nur öffentliche oder nicht gelistete YouTube-Videos, als Adresse der Form https://www.youtube.com/watch?v=…" });
+    }
+    const versionCode = $("mVersionCode").value.trim();
+    if (versionCode && !/^\d+$/.test(versionCode)) {
+      found.push({ level: "warn", title: "Versionscode ist keine Zahl",
+        note: "Der Versionscode ist die ganze Zahl aus dem Build (versionCode), nicht der Versionsname wie 1.2.0." });
     }
     if (values.short.trim() && !/[.!?…]$/.test(values.short.trim())) {
       found.push({ level: "info", title: "Kurzbeschreibung ohne Satzzeichen",
@@ -1300,19 +1375,21 @@
    * ================================================================== */
 
   function renderNotes() {
-    const host = $("notelist");
-    if (!state.shots.length) {
+    const host = $("notelist"), shots = allShots();
+    if (!shots.length) {
       host.replaceChildren(el("li", { class: "hint", text: "Noch keine Screenshots. Lade sie in Schritt 2 — dann kannst du hier beschreiben, was jeder zeigt." }));
       return;
     }
-    host.replaceChildren(...state.shots.map((shot, i) => el("li", { class: "noterow" },
+    const mixed = SET_KEYS.filter((key) => state.sets[key].length).length > 1;
+    host.replaceChildren(...SET_KEYS.flatMap((key) => state.sets[key].map((shot, i) => el("li", { class: "noterow" },
       el("img", { src: shot.url, alt: "" }),
+      mixed ? el("span", { class: "settag", text: SETS[key].label }) : null,
       el("input", {
         type: "text", value: shot.note, placeholder: `Was zeigt Screenshot ${i + 1}?`,
-        "aria-label": `Inhalt von Screenshot ${i + 1}`,
+        "aria-label": `Inhalt von ${SETS[key].label}-Screenshot ${i + 1}`,
         oninput: (e) => { shot.note = e.target.value; },
       })
-    )));
+    ))));
   }
 
   function buildPrompt() {
@@ -1345,8 +1422,10 @@
       ].filter(Boolean).join("\n"));
     });
 
-    section("Screenshots in dieser Reihenfolge", state.shots.length
-      ? state.shots.map((shot, i) => `${i + 1}. ${shot.note.trim() || "(keine Angabe — neutral zum Nutzen der App formulieren)"}`).join("\n")
+    const noted = SET_KEYS.flatMap((key) => state.sets[key].map((shot) =>
+      (key === SET_KEYS[0] ? "" : `[${SETS[key].label}] `) + (shot.note.trim() || "(keine Angabe — neutral zum Nutzen der App formulieren)")));
+    section("Screenshots in dieser Reihenfolge", noted.length
+      ? noted.map((line, i) => `${i + 1}. ${line}`).join("\n")
       : "Es gibt noch keine Screenshots. Gib für captions ein leeres Array zurück.");
 
     section("Sprachen", state.locales.map((l) => `- ${l} (${localeName(l)})`).join("\n") +
@@ -1367,7 +1446,7 @@
       "Antworte nur mit einem JSON-Objekt, ohne Erklärung davor oder danach. Ein Schlüssel pro Sprache:\n" +
       JSON.stringify({ listings: { [state.locales[0]]: {
         title: "", titleAlternatives: ["", ""], shortDescription: "", fullDescription: "", whatsNew: "", featureSubtitle: "",
-        captions: state.shots.length ? [{ headline: "", sub: "" }] : [],
+        captions: allShots().length ? [{ headline: "", sub: "" }] : [],
       } } }, null, 2));
     return out.join("\n\n");
   }
@@ -1397,9 +1476,10 @@
       Object.entries(MAP).forEach(([key, id]) => { if (str(listing[key])) texts[id] = str(listing[key]); });
       texts.alts = (Array.isArray(listing.titleAlternatives) ? listing.titleAlternatives : [])
         .map(str).filter((alt) => alt && alt !== texts.mTitle).slice(0, 5);
-      (Array.isArray(listing.captions) ? listing.captions : []).slice(0, state.shots.length).forEach((c, i) => {
+      const shots = allShots();
+      (Array.isArray(listing.captions) ? listing.captions : []).slice(0, shots.length).forEach((c, i) => {
         if (!c || typeof c !== "object") return;
-        state.shots[i].captions[locale] = { headline: str(c.headline), sub: str(c.sub) };
+        shots[i].captions[locale] = { headline: str(c.headline), sub: str(c.sub) };
       });
     });
     showLocale();
@@ -1418,7 +1498,7 @@
    * gezippten oder direkt gewählten Ordner, oder aus `publish.js --pull`.
    * ================================================================== */
 
-  const LISTING_FILES = { "title.txt": "mTitle", "short_description.txt": "mShort", "full_description.txt": "mFull" };
+  const LISTING_FILES = { "title.txt": "mTitle", "short_description.txt": "mShort", "full_description.txt": "mFull", "video.txt": "mVideo" };
 
   // entries: [{ path, read: () => Promise<string> }]
   async function importListing(entries) {
@@ -1457,7 +1537,7 @@
     });
     // Eine leere Startsprache, die im Import nicht vorkommt, stört nur.
     const isBlank = (locale) => LOCALE_FIELDS.every((id) => !state.texts[locale][id].trim()) &&
-      state.shots.every((shot) => !caption(shot, locale).headline.trim() && !caption(shot, locale).sub.trim());
+      allShots().every((shot) => !caption(shot, locale).headline.trim() && !caption(shot, locale).sub.trim());
     state.locales.filter((l) => !found[l] && isBlank(l)).forEach((locale) => {
       state.locales = state.locales.filter((l) => l !== locale);
       delete state.texts[locale];
@@ -1473,28 +1553,57 @@
   // Hinter dem Zugangsschutz gibt es einen Server-Teil, der den bestehenden
   // Eintrag bei Google abruft. Der Schlüssel dafür liegt nur dort.
   const hasBackend = () => /(?:^|;\s*)wb_user=/.test(document.cookie);
-  async function pullFromPlay() {
-    const pkg = $("mPackage").value.trim();
-    if (!PACKAGE_RE.test(pkg) || pkg === DEFAULTS.mPackage) {
-      toast("Trage zuerst den Paketnamen der App ein.", "error");
-      $("mPackage").focus();
-      return;
-    }
-    let res;
+  // Was der Server diesem Mitglied erlaubt. Solange nichts bekannt ist: nichts.
+  const backend = { features: { pull: false, publish: false, ai: false, team: false } };
+
+  async function apiFetch(path, init = {}) {
     try {
-      res = await fetch("/api/listing?package=" + encodeURIComponent(pkg), {
-        headers: { "X-Werkbank": "1", Accept: "application/json" }, credentials: "same-origin", redirect: "error",
+      return await fetch(path, {
+        ...init, credentials: "same-origin", redirect: "error",
+        headers: { "X-Werkbank": "1", Accept: "application/json", ...(init.headers || {}) },
       });
     } catch (_) {
       throw new Error("Keine Antwort vom Server. Ist die Anmeldung abgelaufen? Dann die Seite neu laden.");
     }
+  }
+  // Wie apiFetch, liefert aber die JSON-Antwort und wirft die Fehlermeldung des Servers.
+  async function apiJson(path, init) {
+    const res = await apiFetch(path, init);
     let data = null;
     try { data = await res.json(); } catch (_) { /* keine JSON-Antwort */ }
-    if (!res.ok || !data) throw new Error((data && data.error) || `Der Abruf ist fehlgeschlagen (${res.status}).`);
+    if (!res.ok || !data) {
+      const error = new Error((data && data.error) || `Der Aufruf ist fehlgeschlagen (${res.status}).`);
+      error.status = res.status;
+      error.data = data;
+      throw error;
+    }
+    return data;
+  }
+  async function loadBackend() {
+    if (hasBackend()) {
+      try { Object.assign(backend.features, (await apiJson("/api/me")).features); }
+      catch (err) { console.warn("Server-Funktionen nicht abrufbar", err); }
+    }
+    $("pullplay").hidden = !backend.features.pull;
+    $("aibox").hidden = !backend.features.ai;
+    $("publishcard").hidden = !backend.features.publish;
+    $("teambox").hidden = !backend.features.team;
+  }
+
+  function packageName() {
+    const pkg = $("mPackage").value.trim();
+    if (PACKAGE_RE.test(pkg) && pkg !== DEFAULTS.mPackage) return pkg;
+    toast("Trage zuerst den Paketnamen der App ein (Schritt 4 „Texte“).", "error");
+    return "";
+  }
+  async function pullFromPlay() {
+    const pkg = packageName();
+    if (!pkg) { $("mPackage").focus(); return; }
+    const data = await apiJson("/api/listing?package=" + encodeURIComponent(pkg));
     const found = {};
     (Array.isArray(data.listings) ? data.listings : []).forEach((l) => {
       if (!l || !LOCALE_RE.test(String(l.language || ""))) return;
-      found[l.language] = { mTitle: String(l.title || ""), mShort: String(l.shortDescription || ""), mFull: String(l.fullDescription || "") };
+      found[l.language] = { mTitle: String(l.title || ""), mShort: String(l.shortDescription || ""), mFull: String(l.fullDescription || ""), mVideo: String(l.video || "") };
     });
     if (!Object.keys(found).length) { toast("Für diese App ist im Store noch kein Eintrag hinterlegt.", "error"); return; }
     applyImportedTexts(found, "aus Play geladen");
@@ -1513,6 +1622,71 @@
   }
 
   /* ================================================================== *
+   * Server-Funktionen: Vorschläge, Veröffentlichen
+   * ================================================================== */
+
+  async function suggestTexts() {
+    if (!$("bWhat").value.trim()) toast("Tipp: Beschreibe zuerst, was die App tut — sonst bleiben die Texte allgemein.");
+    toast("Vorschläge werden erzeugt — das dauert bis zu einer Minute.");
+    const { text } = await apiJson("/api/suggest", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: buildPrompt() }),
+    });
+    applySuggestions(text);
+  }
+
+  // Schickt jede Sprache und jedes Bild einzeln zum Server, der sie an Google
+  // Play weiterreicht. Erst der letzte Aufruf verändert den Store — und nur
+  // bei commit. Bricht etwas ab, wird der Vorgang bei Google verworfen.
+  async function publishListing(commit) {
+    const pkg = packageName();
+    if (!pkg) return;
+    const open = checks().filter((c) => c.ok === false).map((c) => c.label.replace(/\s*\(.*\)$/, ""));
+    if (open.length) { toast("Erst die Checkliste abschließen. Noch offen: " + open.join(", ") + ".", "error"); return; }
+    if (commit && !confirm(
+      `Store-Eintrag von ${pkg} jetzt überschreiben?\n\nSprachen: ${state.locales.join(", ")}\n` +
+      "Texte und Bilder im Play Store werden ersetzt und gehen in die Prüfung bei Google.")) return;
+
+    const say = (text) => { $("pubstate").textContent = text; };
+    const query = (extra) => "?" + new URLSearchParams({ package: pkg, ...extra }).toString();
+    say("Verbinde mit Google Play …");
+    let edit = "";
+    try {
+      ({ edit } = await apiJson("/api/publish/start" + query({}), { method: "POST" }));
+      await renderListing(async ({ locale, texts, icon, feature, sets }) => {
+        say(`${locale}: Texte …`);
+        await apiJson("/api/publish/listing" + query({ edit, language: locale }), {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: texts.mTitle, shortDescription: texts.mShort, fullDescription: texts.mFull, video: texts.mVideo }),
+        });
+        const upload = async (type, blob, first, label) => {
+          say(`${locale}: ${label} …`);
+          await apiJson("/api/publish/image" + query({ edit, language: locale, type, ...(first ? { first: "1" } : {}) }), {
+            method: "POST", headers: { "Content-Type": blob.type }, body: blob,
+          });
+        };
+        if (icon) await upload("icon", icon, true, "Icon");
+        await upload("featureGraphic", feature, true, "Feature Graphic");
+        for (const { dir, images } of sets) {
+          for (let i = 0; i < images.length; i++) {
+            await upload(dir, images[i], i === 0, `${SETS[dir].label}-Screenshot ${i + 1} von ${images.length}`);
+          }
+        }
+      });
+      say(commit ? "Veröffentliche …" : "Google prüft …");
+      await apiJson("/api/publish/finish" + query({ edit, mode: commit ? "commit" : "check" }), { method: "POST" });
+    } catch (err) {
+      if (edit) await apiFetch("/api/publish/abort" + query({ edit }), { method: "POST" }).catch(() => {});
+      say("Abgebrochen — im Store wurde nichts verändert.");
+      throw err;
+    }
+    const when = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+    say(commit
+      ? `Veröffentlicht um ${when}. Die Änderungen gehen jetzt in die Prüfung bei Google.`
+      : `Probelauf um ${when} bestanden: Google hätte den Eintrag angenommen. Nichts wurde verändert.`);
+    toast(commit ? "Store-Eintrag veröffentlicht." : "Probelauf bestanden.");
+  }
+
+  /* ================================================================== *
    * Checkliste und Export
    * ================================================================== */
 
@@ -1522,10 +1696,10 @@
 
   function checks() {
     commitLocale();
-    const n = state.shots.length, multi = state.locales.length > 1, first = state.locales[0];
+    const n = state.sets.phoneScreenshots.length, multi = state.locales.length > 1, first = state.locales[0];
     const list = [
       { ok: !!state.iconLogo, label: "App-Icon 512 × 512", note: "32-Bit-PNG, unter 1 MB, ohne vorgerundete Ecken.", go: "icon" },
-      { ok: n >= 2, label: `Screenshots (${n} von ${MAX_SHOTS})`, note: "Mindestens 2, ab 4 im Hochformat Featuring-fähig.", go: "shots" },
+      { ok: n >= 2, label: `Phone-Screenshots (${n} von ${MAX_SHOTS})`, note: "Mindestens 2, ab 4 im Hochformat Featuring-fähig. Tablet-Screenshots sind freiwillig.", go: "shots", set: "phoneScreenshots" },
     ];
     state.locales.forEach((locale) => {
       const texts = state.texts[locale];
@@ -1558,7 +1732,11 @@
       el("div", {}, c.label, el("small", { text: c.note })),
       c.ok === false ? el("button", {
         class: "linkbtn", type: "button", text: "Öffnen",
-        onclick: () => { if (c.locale) switchLocale(c.locale); activate(c.go); },
+        onclick: () => {
+          if (c.locale) switchLocale(c.locale);
+          if (c.set && c.set !== shotDir()) { $("deviceset").value = c.set; renderList(); touch({ plates: true }); }
+          activate(c.go);
+        },
       }) : null
     )));
   }
@@ -1568,7 +1746,7 @@
     node.classList.toggle("done", done);
   }
   function updateSteps() {
-    const all = checks(), n = state.shots.length, texts = state.texts[state.locale];
+    const all = checks(), n = state.sets.phoneScreenshots.length, texts = state.texts[state.locale];
     const filled = Object.keys(TEXT_LABELS).filter((id) => fieldOk(texts, id)).length;
     const open = all.filter((c) => c.ok === false).length;
     setStep("icon", state.iconLogo ? "✓" : "fehlt", !!state.iconLogo);
@@ -1588,11 +1766,12 @@
       [`fastlane/metadata/android/${state.locale}/`, true],
       ["  title.txt"], ["  short_description.txt"], ["  full_description.txt"],
       ["  changelogs/default.txt"],
+      ["  video.txt             falls ein Vorschauvideo eingetragen ist"],
       ["  images/", true],
       ["    icon.png              512 × 512"],
       ["    featureGraphic.jpg    1024 × 500"],
-      [`    ${shotDir()}/`, true],
-      ["      1_screenshot.jpg … 8_screenshot.jpg"],
+      ...(SET_KEYS.filter((key) => state.sets[key].length).length ? SET_KEYS.filter((key) => state.sets[key].length) : [shotDir()])
+        .flatMap((key) => [[`    ${key}/`, true], ["      1_screenshot.jpg … 8_screenshot.jpg"]]),
       more > 0 ? [`… genauso für ${state.locales.filter((l) => l !== state.locale).join(", ")}`] : null,
       ["android/app/src/main/res/", true],
       ["  mipmap-mdpi … mipmap-xxxhdpi/"],
@@ -1606,31 +1785,61 @@
     $("tree").replaceChildren(...lines.flatMap(([text, bold]) => [bold ? el("b", { text }) : text, "\n"]));
   }
 
-  async function buildZip(full) {
-    if (!hasZip()) { toast("Die ZIP-Bibliothek fehlt (assets/vendor/jszip.min.js). Lade die Assets einzeln.", "error"); return; }
-    const zip = new window.JSZip(), original = state.locale;
-    const icon = state.iconLogo ? await storeIconBlob() : null;
+  // Rendert jede Sprache und jedes Gerät nacheinander und übergibt die
+  // fertigen Bilder. Captions und Feature Graphic tragen Text, also braucht
+  // jede Sprache ihre eigenen. ZIP-Export und Veröffentlichen nutzen beide das.
+  async function renderListing(onLocale) {
+    const originalLocale = state.locale, originalSet = shotDir();
+    // Während des Renderns stehen Sprache und Gerät auf Zwischenwerten.
+    // Speichern und Verlauf warten so lange, sonst hielten sie die fest.
+    rendering = true;
     try {
-      // Jede Sprache nacheinander rendern: Captions und Feature Graphic
-      // tragen Text, also braucht jede ihre eigenen Bilder.
+      const icon = state.iconLogo ? await storeIconBlob() : null;
       for (const locale of state.locales) {
         viewLocale(locale);
-        const base = `fastlane/metadata/android/${locale}/`, texts = state.texts[locale];
-        const text = (path, id) => { const v = texts[id].trim(); if (v) zip.file(base + path, v + "\n"); };
-        text("title.txt", "mTitle");
-        text("short_description.txt", "mShort");
-        text("full_description.txt", "mFull");
-        text("changelogs/default.txt", "mWhats");
-        if (icon) zip.file(base + "images/icon.png", icon);
-        zip.file(base + "images/featureGraphic.jpg", await toBlob($("fcanvas"), "image/jpeg"));
-        for (let i = 0; i < state.shots.length; i++) {
-          zip.file(`${base}images/${shotDir()}/${i + 1}_screenshot.jpg`, await toBlob(state.shots[i].canvas, "image/jpeg"));
+        const feature = await toBlob($("fcanvas"), "image/jpeg");
+        const sets = [];
+        for (const dir of SET_KEYS) {
+          const shots = state.sets[dir];
+          if (!shots.length) continue;
+          $("deviceset").value = dir;
+          const images = [];
+          for (let i = 0; i < shots.length; i++) {
+            shots[i].canvas = shots[i].canvas || offscreen(1, 1);
+            drawShot(shots[i].canvas, i);
+            images.push(await toBlob(shots[i].canvas, "image/jpeg"));
+          }
+          sets.push({ dir, images });
         }
+        $("deviceset").value = originalSet;
+        await onLocale({ locale, texts: state.texts[locale], icon, feature, sets });
       }
     } finally {
-      viewLocale(original);
+      $("deviceset").value = originalSet;
+      viewLocale(originalLocale);
       renderSearchSim();
+      rendering = false;
+      if (savePending) { savePending = false; markDirty(); }
     }
+  }
+
+  async function buildZip(full) {
+    if (!hasZip()) { toast("Die ZIP-Bibliothek fehlt (assets/vendor/jszip.min.js). Lade die Assets einzeln.", "error"); return; }
+    const zip = new window.JSZip();
+    const versionCode = $("mVersionCode").value.trim();
+    await renderListing(({ locale, texts, icon, feature, sets }) => {
+      const base = `fastlane/metadata/android/${locale}/`;
+      const text = (path, id) => { const v = texts[id].trim(); if (v) zip.file(base + path, v + "\n"); };
+      text("title.txt", "mTitle");
+      text("short_description.txt", "mShort");
+      text("full_description.txt", "mFull");
+      text("video.txt", "mVideo");
+      text("changelogs/default.txt", "mWhats");
+      if (/^\d+$/.test(versionCode)) text(`changelogs/${versionCode}.txt`, "mWhats");
+      if (icon) zip.file(base + "images/icon.png", icon);
+      zip.file(base + "images/featureGraphic.jpg", feature);
+      sets.forEach(({ dir, images }) => images.forEach((image, i) => zip.file(`${base}images/${dir}/${i + 1}_screenshot.jpg`, image)));
+    });
     zip.file("LIESMICH.txt",
       "Play-Store-Paket aus der Listing-Werkbank\n" +
       "Sprachen: " + state.locales.join(", ") + "\n\n" +
@@ -1685,15 +1894,16 @@
     commitLocale();
     // Captions für jede Sprache anlegen. Sonst entstünden sie erst beim
     // Ansehen einer Sprache — und das bloße Umschalten zählte als Änderung.
-    state.shots.forEach((shot) => state.locales.forEach((locale) => caption(shot, locale)));
+    allShots().forEach((shot) => state.locales.forEach((locale) => caption(shot, locale)));
     return {
       settings: readSettings(),
       locales: [...state.locales],
       texts: clone(state.texts),
-      shots: state.shots.map((s) => ({
-        id: s.id, blob: s.blob, img: s.img, url: s.url,
+      shots: SET_KEYS.flatMap((set) => state.sets[set].map((s) => ({
+        id: s.id, blob: s.blob, img: s.img, url: s.url, set,
         captions: clone(s.captions), note: s.note, layout: s.layout, bg: s.bg ? [...s.bg] : null,
-      })),
+        zoom: s.zoom || 1, pos: s.pos || 0,
+      }))),
       iconLogo: state.iconLogo, featLogo: state.featLogo, font: state.font,
     };
   }
@@ -1701,7 +1911,9 @@
     state.locales = [...c.locales];
     state.texts = clone(c.texts);
     if (!state.texts[state.locale]) state.locale = state.locales[0];
-    state.shots = c.shots.map((s) => newShot(s, { captions: clone(s.captions), bg: s.bg ? [...s.bg] : null }));
+    state.sets = emptySets();
+    c.shots.forEach((s) => state.sets[SETS[s.set] ? s.set : SET_KEYS[0]]
+      .push(newShot(s, { captions: clone(s.captions), bg: s.bg ? [...s.bg] : null })));
     state.iconLogo = c.iconLogo;
     state.featLogo = c.featLogo;
     state.font = c.font;
@@ -1717,7 +1929,7 @@
   // Die aktive Sprache ist Ansicht, kein Inhalt — sie zählt nicht als Änderung.
   const signature = (c) => JSON.stringify([
     c.settings, c.locales, c.texts,
-    c.shots.map((s) => [s.id, s.captions, s.note, s.layout, s.bg]),
+    c.shots.map((s) => [s.id, s.set, s.captions, s.note, s.layout, s.bg, s.zoom, s.pos]),
     c.iconLogo && c.iconLogo.id, c.featLogo && c.featLogo.id, c.font && c.font.id,
   ]);
 
@@ -1773,7 +1985,8 @@
       c.shots.forEach((s) => urls.add(s.url));
       [c.iconLogo, c.featLogo].forEach((a) => { if (a) urls.add(a.url); });
     };
-    [...timeline.past, timeline.present, ...timeline.future, state].forEach(add);
+    [...timeline.past, timeline.present, ...timeline.future,
+      { shots: allShots(), iconLogo: state.iconLogo, featLogo: state.featLogo }].forEach(add);
     return urls;
   }
 
@@ -1811,7 +2024,7 @@
     return {
       version: PROJECT_VERSION,
       settings: c.settings, locale: state.locale, locales: c.locales, texts: c.texts,
-      shots: c.shots.map((s) => ({ captions: s.captions, note: s.note, layout: s.layout, bg: s.bg, blob: s.blob })),
+      shots: c.shots.map((s) => ({ set: s.set, captions: s.captions, note: s.note, layout: s.layout, bg: s.bg, zoom: s.zoom, pos: s.pos, blob: s.blob })),
       logo: c.iconLogo ? c.iconLogo.blob : null,
       featLogo: c.featLogo ? c.featLogo.blob : null,
       font: c.font ? { blob: c.font.blob, name: c.font.name } : null,
@@ -1821,7 +2034,10 @@
   // Bringt jeden gespeicherten Stand — auch ältere Versionen und fremde
   // Dateien — in die aktuelle, geprüfte Form.
   function normalize(snap) {
-    const settings = snap.settings && typeof snap.settings === "object" ? snap.settings : {};
+    let settings = snap.settings && typeof snap.settings === "object" ? snap.settings : {};
+    // Früher steckte das Gerät im Zielformat; alle Screenshots gehörten dazu.
+    const legacySet = !settings.deviceset && LEGACY_PRESETS[settings.preset];
+    if (legacySet) settings = { ...settings, deviceset: legacySet, preset: DEFAULTS.preset };
     const str = (v) => (typeof v === "string" ? v : "");
     const layouts = Array.from($("layout").options).map((o) => o.value);
     let locales = (Array.isArray(snap.locales) ? snap.locales : []).filter((l) => typeof l === "string" && LOCALE_RE.test(l));
@@ -1840,15 +2056,21 @@
       texts[locale] = emptyTexts();
       LOCALE_FIELDS.forEach((id) => { texts[locale][id] = str(settings[id]); });
     }
-    const shots = (Array.isArray(snap.shots) ? snap.shots : []).slice(0, MAX_SHOTS).map((s) => {
+    const perSet = {};
+    const clamp = (value, min, max, fallback) => (Number.isFinite(Number(value)) ? Math.min(max, Math.max(min, Number(value))) : fallback);
+    const shots = (Array.isArray(snap.shots) ? snap.shots : []).map((s) => {
       const captions = {};
       locales.forEach((locale) => {
         const src = (s.captions && s.captions[locale]) || (locale === locales[0] && !s.captions ? s : {});
         captions[locale] = { headline: str(src.headline), sub: str(src.sub) };
       });
       const bg = Array.isArray(s.bg) && s.bg.length === 2 && s.bg.every((c) => /^#[0-9a-f]{6}$/i.test(c)) ? [...s.bg] : null;
-      return { blob: s.blob, captions, note: str(s.note), layout: layouts.includes(s.layout) ? s.layout : "", bg };
-    });
+      const set = SETS[s.set] ? s.set : legacySet || SET_KEYS[0];
+      return {
+        blob: s.blob, set, captions, note: str(s.note), layout: layouts.includes(s.layout) ? s.layout : "", bg,
+        zoom: clamp(s.zoom, 1, 2.5, 1), pos: clamp(s.pos, 0, 1, 0),
+      };
+    }).filter((s) => (perSet[s.set] = (perSet[s.set] || 0) + 1) <= MAX_SHOTS);
     return {
       settings, locales, texts, shots,
       locale: locales.includes(snap.locale) ? snap.locale : locales[0],
@@ -1910,10 +2132,11 @@
     };
   }
 
-  let saveTimer = 0, autosave = true;
+  let saveTimer = 0, autosave = true, rendering = false, savePending = false;
   function setSaveState(text) { $("savestate").textContent = text; }
   // ---- Projekte: mehrere Store-Einträge nebeneinander im selben Browser
-  const projects = { id: "", list: [] };   // list: [{ id, name, pkg, shots, locales, updated }]
+  // list: [{ id, name, pkg, shots, locales, updated }]; teamAt: zuletzt bekannter Stand je Projekt in der Team-Ablage
+  const projects = { id: "", list: [], teamAt: {} };
   const newId = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 
   function projectName() {
@@ -1923,18 +2146,19 @@
   }
   function describeProject(id) {
     const pkg = $("mPackage").value.trim();
-    return { id, name: projectName(), pkg: pkg === DEFAULTS.mPackage ? "" : pkg, shots: state.shots.length, locales: state.locales.length, updated: Date.now() };
+    return { id, name: projectName(), pkg: pkg === DEFAULTS.mPackage ? "" : pkg, shots: allShots().length, locales: state.locales.length, updated: Date.now() };
   }
   // Ein unberührtes Projekt wird nicht gespeichert — sonst füllt jeder Klick
   // auf „Neues Projekt“ die Liste mit Leerem.
   function isBlankProject() {
     commitLocale();
-    return !state.shots.length && !state.iconLogo && !state.featLogo && !state.font && !$("bWhat").value.trim() &&
+    return !allShots().length && !state.iconLogo && !state.featLogo && !state.font && !$("bWhat").value.trim() &&
       state.locales.every((locale) => LOCALE_FIELDS.every((id) => !state.texts[locale][id].trim()));
   }
 
   async function persist() {
     if (!autosave) return;
+    if (rendering) { savePending = true; return; }
     // Alles, was dieses Projekt beschreibt, jetzt festhalten: bis das
     // Schreiben fertig ist, kann schon ein anderes Projekt geöffnet sein.
     const id = projects.id, blank = isBlankProject(), entry = describeProject(id);
@@ -1942,7 +2166,7 @@
       if (blank) await local.del(projectKey(id));
       else await local.put(projectKey(id), await packSnapshot(snapshot()));
       projects.list = [...(blank ? [] : [entry]), ...projects.list.filter((p) => p.id !== id)];
-      await local.put("meta", { active: projects.id, list: projects.list });
+      await local.put("meta", { active: projects.id, list: projects.list, teamAt: projects.teamAt });
       setSaveState(blank ? "" : "Automatisch gespeichert");
       renderProjectUi();
     }
@@ -2028,12 +2252,17 @@
   // einem Schritt im Verlauf und zu einem Schreibvorgang.
   function markDirty() {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => { commitHistory(); persist(); }, 600);
+    saveTimer = setTimeout(() => {
+      if (rendering) { savePending = true; return; }
+      commitHistory();
+      persist();
+    }, 600);
   }
 
-  async function saveProjectFile() {
+  // Das geöffnete Projekt als eine Datei: Bilder und Schrift eingebettet.
+  async function projectFileData() {
     const snap = snapshot();
-    const data = {
+    return {
       version: snap.version, saved: new Date().toISOString(),
       settings: snap.settings, locale: snap.locale, locales: snap.locales, texts: snap.texts,
       shots: await Promise.all(snap.shots.map(async ({ blob, ...rest }) => ({ ...rest, image: await blobToDataUrl(blob) }))),
@@ -2041,38 +2270,112 @@
       featLogo: snap.featLogo ? await blobToDataUrl(snap.featLogo) : null,
       font: snap.font ? { name: snap.font.name, data: await blobToDataUrl(snap.font.blob) } : null,
     };
+  }
+  async function saveProjectFile() {
+    const data = await projectFileData();
     const title = state.texts[state.locales[0]].mTitle;
     const slug = title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "listing";
     saveBlob(new Blob([JSON.stringify(data)], { type: "application/json" }), slug + "-projekt.json");
     toast("Projektdatei gesichert.");
   }
-  // Eine Projektdatei wird immer ein weiteres Projekt — sie überschreibt nichts.
-  async function loadProjectFile(file) {
+  // Öffnet Projektdaten unter der angegebenen Kennung. Wirft, wenn sie unlesbar sind.
+  async function openProjectData(data, id) {
+    if (!data || typeof data !== "object" || typeof data.settings !== "object") throw new Error("Kein Projekt");
+    let font = null;
+    if (data.font && data.font.data) {
+      try { font = { name: data.font.name, blob: dataUrlToBlob(data.font.data, "font") }; } catch (_) { /* ohne Schrift weiter */ }
+    }
+    const snap = {
+      ...data,
+      shots: (Array.isArray(data.shots) ? data.shots : []).map((s) => ({ ...s, blob: dataUrlToBlob(s.image) })),
+      logo: data.logo ? dataUrlToBlob(data.logo) : null,
+      featLogo: data.featLogo ? dataUrlToBlob(data.featLogo) : null,
+      font,
+    };
     await settleNow();
     const previous = projects.id;
+    projects.id = id;
+    try { await restore(snap); }
+    catch (err) { projects.id = previous; throw err; }
+    await persist();
+  }
+  // Eine Projektdatei wird immer ein weiteres Projekt — sie überschreibt nichts.
+  async function loadProjectFile(file) {
     try {
-      const data = JSON.parse(await file.text());
-      if (!data || typeof data !== "object" || typeof data.settings !== "object") throw new Error("Kein Projekt");
-      let font = null;
-      if (data.font && data.font.data) {
-        try { font = { name: data.font.name, blob: dataUrlToBlob(data.font.data, "font") }; } catch (_) { /* ohne Schrift weiter */ }
-      }
-      const snap = {
-        ...data,
-        shots: (Array.isArray(data.shots) ? data.shots : []).map((s) => ({ ...s, blob: dataUrlToBlob(s.image) })),
-        logo: data.logo ? dataUrlToBlob(data.logo) : null,
-        featLogo: data.featLogo ? dataUrlToBlob(data.featLogo) : null,
-        font,
-      };
-      projects.id = newId();
-      await restore(snap);
-      await persist();
+      await openProjectData(JSON.parse(await file.text()), newId());
       toast(`Projekt „${projectName()}“ geladen.`);
     } catch (err) {
       console.error(err);
-      projects.id = previous;
       toast("Die Datei ließ sich nicht lesen. Ist es eine mit diesem Tool gesicherte Projektdatei?", "error");
     }
+  }
+
+  // ---- Team-Ablage: Projekte ausdrücklich fürs Team ablegen und von dort holen
+  const TEAM_MAX_BYTES = 24 * 1024 * 1024;
+  const teamItem = (id, extra = {}) => "/api/team/item?" + new URLSearchParams({ id, ...extra }).toString();
+
+  async function renderTeam() {
+    if (!backend.features.team) return;
+    const host = $("teamlist");
+    let list;
+    try { ({ projects: list } = await apiJson("/api/team")); }
+    catch (err) { host.replaceChildren(el("li", { class: "empty-row", text: err.message })); return; }
+    if (!list.length) { host.replaceChildren(el("li", { class: "empty-row", text: "Noch nichts abgelegt." })); return; }
+    const when = (time) => new Date(time).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" });
+    host.replaceChildren(...list.map((p) => el("li", {},
+      el("div", { class: "pinfo" },
+        el("b", { text: p.name || "Projekt" }),
+        el("small", { text: [p.by, p.at ? when(p.at) : null, p.size ? (p.size / 1048576).toFixed(1).replace(".", ",") + " MB" : null].filter(Boolean).join(" · ") })),
+      el("button", { class: "btn", type: "button", text: "Öffnen", "aria-label": `${p.name} aus dem Team öffnen`,
+        onclick: (e) => withBusy(e.currentTarget, () => teamOpen(p)) }),
+      el("button", { class: "linkbtn", type: "button", text: "Löschen", "aria-label": `${p.name} aus dem Team löschen`,
+        onclick: (e) => withBusy(e.currentTarget, () => teamDelete(p)) })
+    )));
+  }
+  async function teamPut() {
+    await settleNow();
+    if (isBlankProject()) { toast("Dieses Projekt ist noch leer.", "error"); return; }
+    const body = JSON.stringify(await projectFileData());
+    if (body.length > TEAM_MAX_BYTES) {
+      toast("Das Projekt ist größer als 24 MB und passt nicht in die Team-Ablage. Gib es als Datei weiter.", "error");
+      return;
+    }
+    const id = projects.id, name = projectName();
+    const send = (force) => apiJson(teamItem(id, { name, base: String(projects.teamAt[id] || 0), ...(force ? { force: "1" } : {}) }), {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body,
+    });
+    let saved;
+    try { saved = await send(false); }
+    catch (err) {
+      if (err.status !== 409) throw err;
+      const who = (err.data && err.data.by) || "Jemand";
+      const when = err.data && err.data.at ? new Date(err.data.at).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" }) : "inzwischen";
+      if (!confirm(`${who} hat dieses Projekt am ${when} neu abgelegt.\n\nMit deinem Stand überschreiben? Die Änderungen von ${who} gehen dabei verloren.`)) return;
+      saved = await send(true);
+    }
+    projects.teamAt[id] = saved.at;
+    await persist();
+    await renderTeam();
+    toast(`„${name}“ liegt jetzt in der Team-Ablage.`);
+  }
+  async function teamOpen(entry) {
+    const exists = entry.id === projects.id ? !isBlankProject() : projects.list.some((p) => p.id === entry.id);
+    if (exists && !confirm(`„${entry.name}“ gibt es schon in diesem Browser.\n\nMit dem Stand aus dem Team ersetzen? Deine nicht abgelegten Änderungen gehen dabei verloren.`)) return;
+    const res = await apiFetch(teamItem(entry.id));
+    if (!res.ok) throw new Error(((await res.json().catch(() => null)) || {}).error || "Das Projekt ließ sich nicht laden.");
+    const at = Number(res.headers.get("X-Team-At")) || entry.at || 0;
+    // Gleiche Kennung wie im Team: so ersetzt ein späteres Ablegen denselben Eintrag.
+    await openProjectData(await res.json(), entry.id);
+    projects.teamAt[entry.id] = at;
+    await persist();
+    $("projectdialog").close();
+    toast(`„${projectName()}“ aus dem Team geöffnet.`);
+  }
+  async function teamDelete(entry) {
+    if (!confirm(`„${entry.name}“ aus der Team-Ablage löschen?\n\nKopien in den Browsern der Mitglieder bleiben erhalten.`)) return;
+    await apiJson(teamItem(entry.id), { method: "DELETE" });
+    delete projects.teamAt[entry.id];
+    await renderTeam();
   }
 
   /* ================================================================== *
@@ -2087,11 +2390,12 @@
   // Alles Leichte in einem Rutsch. Die großen Screenshot-Canvases laufen
   // getrennt über repaintShots, weil sie pro Frame mehrere Megapixel kosten.
   function refresh() {
-    $$('input[type="range"]').forEach((range) => {
+    $$('input[type="range"][id]').forEach((range) => {
       $(range.id + "val").textContent = `${range.value} ${range.dataset.unit || ""}`.trim();
     });
     COLOR_GROUPS.forEach(renderContrast);
 
+    $("presetfield").hidden = shotDir() !== "phoneScreenshots";
     $("flogofield").hidden = $("fusericon").checked;
     $("flogoclear").hidden = !state.featLogo;
     $("fontclear").hidden = !state.font;
@@ -2124,6 +2428,8 @@
     if (!(target instanceof HTMLElement) || target.type === "file") return;
     const inRow = !!target.closest(".shotrow");
     if (!inRow && !target.closest(".noterow") && !SETTINGS.includes(target.id) && !LOCALE_FIELDS.includes(target.id)) return;
+    // Anderes Gerät, andere Screenshots: auch die Liste links neu aufbauen.
+    if (target.id === "deviceset") renderList();
     touch({ plates: REBUILD_PLATES.has(target.id), shots: inRow || REPAINT_SHOTS.has(target.id) });
   }
   document.addEventListener("input", onEdit);
@@ -2166,7 +2472,12 @@
   onClick("projsave", saveProjectFile);
   onClick("projnew", async () => { await newProject(); $("projectdialog").close(); });
   onClick("pullplay", pullFromPlay);
-  $("projectbtn").addEventListener("click", () => { $("projectdialog").showModal(); renderProjectUi(); });
+  $("projectbtn").addEventListener("click", () => { $("projectdialog").showModal(); renderProjectUi(); renderTeam(); });
+  onClick("teamput", teamPut);
+  onClick("teamrefresh", renderTeam);
+  onClick("aiGo", suggestTexts);
+  onClick("pubcheck", () => publishListing(false));
+  onClick("pubgo", () => publishListing(true));
   $("projclose").addEventListener("click", () => $("projectdialog").close());
   $("projectdialog").addEventListener("click", (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
 
@@ -2241,7 +2552,7 @@
 
   async function boot() {
     showUser();
-    $("pullplay").hidden = !hasBackend();
+    loadBackend();
     buildSwatches();
     // Canvas zeichnet nur mit Schriften, die schon geladen sind. Kurz warten,
     // aber nie hängen bleiben, falls eine Datei fehlt.
@@ -2268,6 +2579,7 @@
       }
       projects.list = meta && Array.isArray(meta.list) ? meta.list.filter((p) => p && typeof p.id === "string") : [];
       projects.id = (meta && typeof meta.active === "string" && meta.active) || newId();
+      projects.teamAt = meta && meta.teamAt && typeof meta.teamAt === "object" ? meta.teamAt : {};
       saved = await local.get(projectKey(projects.id));
     } catch (_) {
       autosave = false;

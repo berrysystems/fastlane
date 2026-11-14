@@ -34,8 +34,9 @@ dem, was noch fehlt.
 2. **Screenshots** — fünf Layouts, Panorama über mehrere Frames, saubere
    Statusleiste statt der aufgenommenen. Reihenfolge per Ziehen; einzelne
    Screenshots können ein eigenes Layout und eigene Farben bekommen, die
-   Überschriften eine eigene Markenschrift. Tablet-Formate bekommen einen
-   Tablet-Rahmen und landen automatisch im richtigen Ordner.
+   Überschriften eine eigene Markenschrift. Phone und Tablets haben je
+   eigene Screenshots im selben Projekt, im Hoch- oder Querformat; je Bild
+   lässt sich der Ausschnitt vergrößern und verschieben.
 3. **Briefing** — was die App tut, für wen, was die Screenshots zeigen.
    Daraus entsteht ein fertiger Auftrag für einen KI-Assistenten; dessen
    Antwort füllt Store-Texte, Namensalternativen und Captions für alle
@@ -52,6 +53,10 @@ dem, was noch fehlt.
 
 Dazu:
 
+- **Server-Funktionen** auf der geschützten Seite, einzeln zuschaltbar:
+  Store-Eintrag aus Play laden, direkt veröffentlichen (mit Probelauf),
+  Textvorschläge per Knopf, Team-Ablage für Projekte. Siehe
+  [ZUGANG.md](ZUGANG.md).
 - **Mehrere Projekte** nebeneinander (Knopf *Projekt* oben links): je
   Store-Eintrag eines, mit Wechseln, Anlegen und Löschen.
 - **Mehrere Sprachen** in einem Projekt (Auswahl oben rechts). Jede Sprache
@@ -89,11 +94,12 @@ docs/
   assets/app.js         Logik, ohne Build-Schritt
   assets/fonts/         Schriften (SIL Open Font License)
   assets/vendor/        JSZip 3.10.1 (MIT)
-  _worker.js            Zugangsschutz: prüft bei Cloudflare jede Anfrage
+  _worker.js            Server-Teil bei Cloudflare: Zugangsschutz und /api/…
 tools/play-publish/     Upload-Skript mit Tests
 tools/deploy/           Konfiguration für das Ausliefern
 tests/e2e/              Browser-Tests der Werkbank (Playwright)
-tests/worker/           Tests des Zugangsschutzes
+tests/worker/           Tests des Server-Teils
+package.json            Abhängigkeit des Server-Teils (SDK der Claude-API)
 fastlane/metadata/      Ziel des ZIP-Exports
 .github/workflows/      Seite ausliefern, Listing holen und hochladen, Tests
 ```
@@ -108,13 +114,15 @@ Tests des Upload-Skripts:
 cd tools/play-publish && npm ci && npm test
 ```
 
-Tests des Zugangsschutzes:
+Tests des Server-Teils (Zugangsschutz, Abruf, Veröffentlichen, Vorschläge,
+Team-Ablage):
 
 ```bash
-node --test tests/worker/worker.test.mjs
+npm ci && npm test
 ```
 
-Browser-Tests der Werkbank (einmalig vorher `npx playwright install`):
+Browser-Tests der Werkbank (einmalig vorher `npm ci` im Wurzelverzeichnis
+und `npx playwright install`):
 
 ```bash
 cd tests/e2e && npm ci && npx playwright test

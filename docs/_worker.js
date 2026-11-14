@@ -16,10 +16,17 @@
  *   ALLOWED_HOSTS        Adressen, unter denen die Seite erreichbar sein darf,
  *                        z. B. fastlane.example.com (mehrere durch Komma)
  *
- * Optional — Abruf des bestehenden Store-Eintrags für angemeldete Mitglieder:
- *   PLAY_API                     "on" schaltet /api/listing frei
+ * Optional — jede Funktion ist aus, solange sie nicht ausdrücklich eingeschaltet ist:
+ *   PLAY_API                     "on": Store-Eintrag abrufen (/api/listing)
+ *   PLAY_PUBLISH                 "on": Store-Eintrag veröffentlichen (/api/publish/…)
+ *   PUBLISHERS                   E-Mail-Adressen, die veröffentlichen dürfen (Komma)
  *   GOOGLE_SERVICE_ACCOUNT_KEY   Geheimnis: JSON-Schlüssel des Dienstkontos
+ *   AI_API                       "on": Textvorschläge erzeugen (/api/suggest)
+ *   ANTHROPIC_API_KEY            Geheimnis: Schlüssel für die Claude-API
+ *   TEAM                         KV-Namespace: gemeinsame Projekt-Ablage (/api/team…)
  */
+
+import Anthropic from "@anthropic-ai/sdk";
 
 // Schutz im Browser. Die Seite lädt nur eigene Dateien und spricht nur mit
 // ihrem eigenen Server; alles andere ist verboten.
@@ -198,52 +205,302 @@ async function googleAccessToken(key) {
   return googleToken.value;
 }
 
-async function pullListing(request, url, env, claims) {
-  // Der eigene Header erzwingt bei fremden Seiten eine Vorabfrage, die hier
-  // nie beantwortet wird — eine andere Website kann den Abruf nicht auslösen.
-  if (request.headers.get("X-Werkbank") !== "1") return json(403, { error: "Dieser Aufruf ist nur aus der Werkbank möglich." });
-  if (request.method !== "GET") return json(405, { error: "Nur Lesen ist erlaubt." });
+// Welche Server-Funktionen dieses Mitglied nutzen darf.
+function features(env, email) {
+  const play = !!readServiceAccount(env);
+  const publishers = list(env.PUBLISHERS).map((e) => e.toLowerCase());
+  return {
+    pull: env.PLAY_API === "on" && play,
+    publish: env.PLAY_PUBLISH === "on" && play && publishers.includes(String(email).toLowerCase()),
+    ai: env.AI_API === "on" && !!env.ANTHROPIC_API_KEY,
+    team: !!(env.TEAM && typeof env.TEAM.get === "function"),
+  };
+}
 
-  const key = env.PLAY_API === "on" ? readServiceAccount(env) : null;
-  if (!key) return json(501, { error: "Der Abruf aus Play ist auf diesem Server nicht eingerichtet. Nutze stattdessen den ZIP-Import." });
+const explainPlay = async (res) => {
+  // Googles eigene Begründung hilft beim Beheben — sie enthält keine Geheimnisse.
+  const detail = await res.json().then((d) => d && d.error && d.error.message).catch(() => "");
+  if (res.status === 401 || res.status === 403) {
+    return json(403, { error: "Das Dienstkonto hat für diese App nicht die nötige Berechtigung. Prüfe sie in der Play Console." });
+  }
+  if (res.status === 404) return json(404, { error: "Diese App gibt es im Play-Konto nicht. Prüfe den Paketnamen." });
+  return json(502, { error: `Google Play hat abgelehnt (${res.status})${detail ? ": " + detail : "."}` });
+};
 
+async function playSession(env, pkg) {
+  if (!PACKAGE_RE.test(pkg) || pkg.length > 150) return { error: json(400, { error: "Das ist kein gültiger Paketname." }) };
+  try {
+    const token = await googleAccessToken(readServiceAccount(env));
+    return { auth: { Authorization: "Bearer " + token }, app: PLAY_BASE + encodeURIComponent(pkg) };
+  } catch (_) {
+    return { error: json(502, { error: "Die Anmeldung des Dienstkontos bei Google ist fehlgeschlagen. Der hinterlegte Schlüssel ist ungültig oder widerrufen." }) };
+  }
+}
+
+async function pullListing(url, env, claims) {
   const pkg = url.searchParams.get("package") || "";
-  if (!PACKAGE_RE.test(pkg) || pkg.length > 150) return json(400, { error: "Das ist kein gültiger Paketname." });
-
+  const play = await playSession(env, pkg);
+  if (play.error) return play.error;
   console.log(`Play-Abruf: ${claims.email} lädt ${pkg}`);
-  let token;
-  try { token = await googleAccessToken(key); }
-  catch (_) { return json(502, { error: "Die Anmeldung des Dienstkontos bei Google ist fehlgeschlagen. Der hinterlegte Schlüssel ist ungültig oder widerrufen." }); }
-
-  const base = PLAY_BASE + encodeURIComponent(pkg) + "/edits";
-  const auth = { Authorization: "Bearer " + token };
-  const explain = (status) => status === 401 || status === 403
-    ? json(403, { error: "Das Dienstkonto darf den Eintrag dieser App nicht lesen. Prüfe die Berechtigung in der Play Console." })
-    : status === 404
-      ? json(404, { error: "Diese App gibt es im Play-Konto nicht. Prüfe den Paketnamen." })
-      : json(502, { error: `Google Play hat den Abruf abgelehnt (${status}).` });
 
   let editId = "";
   try {
-    const created = await fetch(base, { method: "POST", headers: auth });
-    if (!created.ok) return explain(created.status);
+    const created = await fetch(play.app + "/edits", { method: "POST", headers: play.auth });
+    if (!created.ok) return explainPlay(created);
     editId = (await created.json()).id;
-    const res = await fetch(`${base}/${encodeURIComponent(editId)}/listings`, { headers: auth });
-    if (!res.ok) return explain(res.status);
+    const res = await fetch(`${play.app}/edits/${encodeURIComponent(editId)}/listings`, { headers: play.auth });
+    if (!res.ok) return explainPlay(res);
     const data = await res.json();
     return json(200, {
       package: pkg,
       listings: (data.listings || []).map((l) => ({
         language: String(l.language || ""), title: String(l.title || ""),
         shortDescription: String(l.shortDescription || ""), fullDescription: String(l.fullDescription || ""),
+        video: String(l.video || ""),
       })),
     });
   } catch (_) {
     return json(502, { error: "Google Play ist gerade nicht erreichbar. Bitte später noch einmal versuchen." });
   } finally {
     // Aufräumen ist Kür — ein liegengebliebener Edit verfällt von selbst.
-    if (editId) await fetch(`${base}/${encodeURIComponent(editId)}`, { method: "DELETE", headers: auth }).catch(() => {});
+    if (editId) await fetch(`${play.app}/edits/${encodeURIComponent(editId)}`, { method: "DELETE", headers: play.auth }).catch(() => {});
   }
+}
+
+/* ------------------------------------------------------------------ *
+ * Veröffentlichen
+ *
+ * Der Browser rendert die Bilder und schickt sie Schritt für Schritt:
+ * start → je Sprache listing und image → finish. Erst „finish“ mit
+ * mode=commit verändert den Store; mode=check lässt Google nur prüfen und
+ * verwirft den Edit. So bleibt jeder Aufruf klein, und ein Abbruch
+ * mittendrin hinterlässt nichts.
+ * ------------------------------------------------------------------ */
+
+const LOCALE_RE = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
+const EDIT_RE = /^[A-Za-z0-9_-]{1,80}$/;
+const IMAGE_TYPES = ["icon", "featureGraphic", "phoneScreenshots", "sevenInchScreenshots", "tenInchScreenshots"];
+const TEXT_LIMITS = { title: 30, shortDescription: 80, fullDescription: 4000 };
+const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+const PLAY_UPLOAD = PLAY_BASE.replace("/androidpublisher/", "/upload/androidpublisher/");
+
+async function publish(action, request, url, env, claims) {
+  const q = url.searchParams, pkg = q.get("package") || "";
+  const play = await playSession(env, pkg);
+  if (play.error) return play.error;
+
+  if (action === "start") {
+    console.log(`Veröffentlichen: ${claims.email} beginnt für ${pkg}`);
+    const res = await fetch(play.app + "/edits", { method: "POST", headers: play.auth });
+    if (!res.ok) return explainPlay(res);
+    return json(200, { edit: (await res.json()).id });
+  }
+
+  const edit = q.get("edit") || "";
+  if (!EDIT_RE.test(edit)) return json(400, { error: "Ungültiger Vorgang." });
+  const editUrl = `${play.app}/edits/${edit}`;
+
+  if (action === "abort") {
+    await fetch(editUrl, { method: "DELETE", headers: play.auth }).catch(() => {});
+    return json(200, { ok: true });
+  }
+  if (action === "finish") {
+    const commit = q.get("mode") === "commit";
+    const res = await fetch(`${editUrl}:${commit ? "commit" : "validate"}`, { method: "POST", headers: play.auth });
+    if (!res.ok) return explainPlay(res);
+    if (!commit) await fetch(editUrl, { method: "DELETE", headers: play.auth }).catch(() => {});
+    console.log(`Veröffentlichen: ${claims.email} hat ${pkg} ${commit ? "veröffentlicht" : "geprüft"}`);
+    return json(200, { ok: true, mode: commit ? "commit" : "check" });
+  }
+
+  const language = q.get("language") || "";
+  if (!LOCALE_RE.test(language)) return json(400, { error: "Ungültige Sprache." });
+  const listingUrl = `${editUrl}/listings/${language}`;
+
+  if (action === "listing") {
+    const body = await request.json().catch(() => null);
+    if (!body || typeof body !== "object") return json(400, { error: "Die Texte fehlen." });
+    const listing = { language };
+    for (const [field, max] of Object.entries(TEXT_LIMITS)) {
+      const value = typeof body[field] === "string" ? body[field].trim() : "";
+      if (!value) return json(400, { error: `${language}: ${field} fehlt.` });
+      if (Array.from(value).length > max) return json(400, { error: `${language}: ${field} ist länger als ${max} Zeichen.` });
+      listing[field] = value;
+    }
+    if (typeof body.video === "string" && body.video.trim()) listing.video = body.video.trim();
+    const res = await fetch(listingUrl, {
+      method: "PUT", headers: { ...play.auth, "Content-Type": "application/json" }, body: JSON.stringify(listing),
+    });
+    return res.ok ? json(200, { ok: true }) : explainPlay(res);
+  }
+
+  if (action === "image") {
+    const type = q.get("type") || "", contentType = request.headers.get("Content-Type") || "";
+    if (!IMAGE_TYPES.includes(type)) return json(400, { error: "Unbekannte Bildart." });
+    if (contentType !== "image/png" && contentType !== "image/jpeg") return json(400, { error: "Nur PNG und JPEG sind erlaubt." });
+    const bytes = await request.arrayBuffer();
+    if (!bytes.byteLength || bytes.byteLength > MAX_IMAGE_BYTES) return json(400, { error: "Das Bild ist leer oder zu groß." });
+    // Ersetzen statt anhängen: vor dem ersten Bild einer Art die alten löschen.
+    if (q.get("first") === "1") {
+      const cleared = await fetch(`${listingUrl}/${type}`, { method: "DELETE", headers: play.auth });
+      if (!cleared.ok) return explainPlay(cleared);
+    }
+    const res = await fetch(`${PLAY_UPLOAD}${encodeURIComponent(pkg)}/edits/${edit}/listings/${language}/${type}?uploadType=media`, {
+      method: "POST", headers: { ...play.auth, "Content-Type": contentType }, body: bytes,
+    });
+    return res.ok ? json(200, { ok: true }) : explainPlay(res);
+  }
+  return json(404, { error: "Unbekannter Aufruf." });
+}
+
+/* ------------------------------------------------------------------ *
+ * Textvorschläge
+ *
+ * Reicht den Auftrag aus dem Briefing an die Claude-API weiter. Bewusst
+ * ohne Streaming: so bleibt die Rechenzeit im Worker minimal.
+ * ------------------------------------------------------------------ */
+
+const MAX_PROMPT_CHARS = 60000;
+
+async function suggest(request, env, claims) {
+  const body = await request.json().catch(() => null);
+  const prompt = body && typeof body.prompt === "string" ? body.prompt.trim() : "";
+  if (!prompt) return json(400, { error: "Der Auftrag fehlt." });
+  if (prompt.length > MAX_PROMPT_CHARS) return json(400, { error: "Der Auftrag ist zu lang. Kürze das Briefing oder teile die Sprachen auf." });
+  console.log(`Textvorschläge: ${claims.email}, ${prompt.length} Zeichen`);
+
+  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+  let message;
+  try {
+    message = await client.beta.messages.create({
+      model: "claude-opus-5-5",
+      max_tokens: 16000,
+      thinking: { type: "adaptive" },
+      output_config: { effort: "medium" },
+      // Lehnt das Modell eine Anfrage ab, übernimmt ein anderes Modell.
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+      messages: [{ role: "user", content: prompt }],
+    });
+  } catch (error) {
+    if (error instanceof Anthropic.AuthenticationError || error instanceof Anthropic.PermissionDeniedError) {
+      return json(502, { error: "Der hinterlegte Schlüssel für die Claude-API ist ungültig." });
+    }
+    if (error instanceof Anthropic.RateLimitError) return json(429, { error: "Gerade zu viele Anfragen. Bitte in einer Minute noch einmal versuchen." });
+    if (error instanceof Anthropic.BadRequestError) return json(502, { error: "Die Claude-API hat die Anfrage abgelehnt: " + error.message });
+    if (error instanceof Anthropic.APIError) return json(502, { error: `Die Claude-API ist gerade nicht erreichbar (${error.status || "keine Antwort"}).` });
+    throw error;
+  }
+  if (message.stop_reason === "refusal") return json(422, { error: "Das Modell hat diese Anfrage abgelehnt. Formuliere das Briefing anders." });
+  if (message.stop_reason === "max_tokens") return json(422, { error: "Die Antwort wurde zu lang. Erzeuge die Vorschläge für weniger Sprachen auf einmal." });
+  const text = message.content.filter((block) => block.type === "text").map((block) => block.text).join("");
+  return json(200, { text });
+}
+
+/* ------------------------------------------------------------------ *
+ * Team-Ablage
+ *
+ * Projekte, die Mitglieder ausdrücklich fürs Team ablegen. Kein
+ * gleichzeitiges Bearbeiten: wer ablegt, ersetzt den abgelegten Stand —
+ * nach einer Warnung, falls jemand anderes ihn inzwischen geändert hat.
+ * ------------------------------------------------------------------ */
+
+const TEAM_ID_RE = /^[A-Za-z0-9-]{8,64}$/;
+const MAX_PROJECT_BYTES = 24 * 1024 * 1024;   // KV fasst 25 MiB je Eintrag
+const teamKey = (id) => "project:" + id;
+
+async function team(request, url, env, claims) {
+  if (url.pathname === "/api/team") {
+    if (request.method !== "GET") return json(405, { error: "Nur Lesen ist erlaubt." });
+    const projects = [];
+    let cursor;
+    do {
+      const page = await env.TEAM.list({ prefix: "project:", cursor });
+      for (const key of page.keys) projects.push({ id: key.name.slice("project:".length), ...(key.metadata || {}) });
+      cursor = page.list_complete ? undefined : page.cursor;
+    } while (cursor);
+    projects.sort((a, b) => (b.at || 0) - (a.at || 0));
+    return json(200, { projects });
+  }
+
+  const id = url.searchParams.get("id") || "";
+  if (!TEAM_ID_RE.test(id)) return json(400, { error: "Ungültige Projektkennung." });
+
+  if (request.method === "GET") {
+    const entry = await env.TEAM.getWithMetadata(teamKey(id), { type: "stream" });
+    if (!entry || !entry.value) return json(404, { error: "Dieses Projekt liegt nicht mehr in der Team-Ablage." });
+    return new Response(entry.value, {
+      headers: { "Content-Type": "application/json; charset=utf-8", "X-Team-At": String((entry.metadata && entry.metadata.at) || 0) },
+    });
+  }
+  if (request.method === "DELETE") {
+    await env.TEAM.delete(teamKey(id));
+    console.log(`Team-Ablage: ${claims.email} löscht ${id}`);
+    return json(200, { ok: true });
+  }
+  if (request.method === "PUT") {
+    const bytes = await request.arrayBuffer();
+    if (!bytes.byteLength) return json(400, { error: "Das Projekt ist leer." });
+    if (bytes.byteLength > MAX_PROJECT_BYTES) {
+      return json(413, { error: "Das Projekt ist größer als 24 MB und passt nicht in die Team-Ablage. Verkleinere die Screenshots oder gib es als Datei weiter." });
+    }
+    // Hat jemand anderes seit dem letzten bekannten Stand abgelegt?
+    const current = await env.TEAM.getWithMetadata(teamKey(id), { type: "stream" });
+    const meta = current && current.metadata;
+    if (current && current.value) await current.value.cancel();
+    const base = Number(url.searchParams.get("base")) || 0;
+    if (meta && meta.at > base && url.searchParams.get("force") !== "1") {
+      return json(409, { error: "Jemand hat dieses Projekt inzwischen neu abgelegt.", by: meta.by, at: meta.at });
+    }
+    const metadata = {
+      name: (url.searchParams.get("name") || "Projekt").slice(0, 80),
+      by: claims.email, at: Date.now(), size: bytes.byteLength,
+    };
+    await env.TEAM.put(teamKey(id), bytes, { metadata });
+    console.log(`Team-Ablage: ${claims.email} legt ${id} ab (${bytes.byteLength} Bytes)`);
+    return json(200, { ok: true, ...metadata });
+  }
+  return json(405, { error: "Dieser Aufruf wird nicht unterstützt." });
+}
+
+/* ------------------------------------------------------------------ *
+ * Verteiler für /api/…
+ * ------------------------------------------------------------------ */
+
+const OFF = {
+  pull: "Der Abruf aus Play ist auf diesem Server nicht eingerichtet. Nutze stattdessen den ZIP-Import.",
+  publish: "Du darfst aus der Werkbank nicht veröffentlichen. Das Veröffentlichen ist ausgeschaltet oder deine Adresse ist dafür nicht freigegeben.",
+  ai: "Textvorschläge sind auf diesem Server nicht eingerichtet. Nutze stattdessen „Auftrag kopieren“.",
+  team: "Die Team-Ablage ist auf diesem Server nicht eingerichtet.",
+};
+
+async function api(request, url, env, claims) {
+  // Der eigene Header erzwingt bei fremden Seiten eine Vorabfrage, die hier
+  // nie beantwortet wird — eine andere Website kann keinen Aufruf auslösen.
+  if (request.headers.get("X-Werkbank") !== "1") return json(403, { error: "Dieser Aufruf ist nur aus der Werkbank möglich." });
+  const can = features(env, claims.email), path = url.pathname, method = request.method;
+  const off = (feature, status = 501) => json(status, { error: OFF[feature] });
+
+  if (path === "/api/me") {
+    return method === "GET" ? json(200, { email: claims.email, features: can }) : json(405, { error: "Nur Lesen ist erlaubt." });
+  }
+  if (path === "/api/listing") {
+    if (method !== "GET") return json(405, { error: "Nur Lesen ist erlaubt." });
+    return can.pull ? pullListing(url, env, claims) : off("pull");
+  }
+  if (path.startsWith("/api/publish/")) {
+    const action = path.slice("/api/publish/".length);
+    const expected = { start: "POST", listing: "PUT", image: "POST", finish: "POST", abort: "POST" }[action];
+    if (!expected) return json(404, { error: "Unbekannter Aufruf." });
+    if (method !== expected) return json(405, { error: "Dieser Aufruf wird nicht unterstützt." });
+    return can.publish ? publish(action, request, url, env, claims) : off("publish", 403);
+  }
+  if (path === "/api/suggest") {
+    if (method !== "POST") return json(405, { error: "Dieser Aufruf wird nicht unterstützt." });
+    return can.ai ? suggest(request, env, claims) : off("ai");
+  }
+  if (path === "/api/team" || path === "/api/team/item") return can.team ? team(request, url, env, claims) : off("team");
+  return json(404, { error: "Unbekannter Aufruf." });
 }
 
 /* ------------------------------------------------------------------ *
@@ -268,7 +525,7 @@ function deny(status, message) {
 // Die Workers-Laufzeit erlaubt neben dem Standard-Export nur Handler.
 // Was Tests und der lokale Testserver brauchen, hängt deshalb hier an.
 export default {
-  internals: { SECURITY_HEADERS, USER_COOKIE, readConfig, verifyAccessToken, clearKeyCache },
+  internals: { SECURITY_HEADERS, USER_COOKIE, readConfig, verifyAccessToken, clearKeyCache, features },
 
   async fetch(request, env) {
     const config = readConfig(env);
@@ -283,10 +540,9 @@ export default {
     try { claims = await verifyAccessToken(tokenFrom(request), config); }
     catch (_) { return deny(403, "Die Werkbank ist nur für eingeladene Mitglieder des Teams zugänglich. Bitte melde dich an."); }
 
-    if (url.pathname === "/api/listing") {
-      return secure(await pullListing(request, url, env, claims), { "Cache-Control": "no-store" });
+    if (url.pathname.startsWith("/api/")) {
+      return secure(await api(request, url, env, claims), { "Cache-Control": "no-store" });
     }
-    if (url.pathname.startsWith("/api/")) return secure(json(404, { error: "Unbekannter Aufruf." }), { "Cache-Control": "no-store" });
 
     if (request.method !== "GET" && request.method !== "HEAD") {
       return secure(new Response(null, { status: 405, headers: { Allow: "GET, HEAD" } }));
