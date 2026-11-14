@@ -1790,8 +1790,11 @@
   // jede Sprache ihre eigenen. ZIP-Export und Veröffentlichen nutzen beide das.
   async function renderListing(onLocale) {
     const originalLocale = state.locale, originalSet = shotDir();
-    const icon = state.iconLogo ? await storeIconBlob() : null;
+    // Während des Renderns stehen Sprache und Gerät auf Zwischenwerten.
+    // Speichern und Verlauf warten so lange, sonst hielten sie die fest.
+    rendering = true;
     try {
+      const icon = state.iconLogo ? await storeIconBlob() : null;
       for (const locale of state.locales) {
         viewLocale(locale);
         const feature = await toBlob($("fcanvas"), "image/jpeg");
@@ -1815,6 +1818,8 @@
       $("deviceset").value = originalSet;
       viewLocale(originalLocale);
       renderSearchSim();
+      rendering = false;
+      if (savePending) { savePending = false; markDirty(); }
     }
   }
 
@@ -2127,7 +2132,7 @@
     };
   }
 
-  let saveTimer = 0, autosave = true;
+  let saveTimer = 0, autosave = true, rendering = false, savePending = false;
   function setSaveState(text) { $("savestate").textContent = text; }
   // ---- Projekte: mehrere Store-Einträge nebeneinander im selben Browser
   // list: [{ id, name, pkg, shots, locales, updated }]; teamAt: zuletzt bekannter Stand je Projekt in der Team-Ablage
@@ -2153,6 +2158,7 @@
 
   async function persist() {
     if (!autosave) return;
+    if (rendering) { savePending = true; return; }
     // Alles, was dieses Projekt beschreibt, jetzt festhalten: bis das
     // Schreiben fertig ist, kann schon ein anderes Projekt geöffnet sein.
     const id = projects.id, blank = isBlankProject(), entry = describeProject(id);
@@ -2246,7 +2252,11 @@
   // einem Schritt im Verlauf und zu einem Schreibvorgang.
   function markDirty() {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => { commitHistory(); persist(); }, 600);
+    saveTimer = setTimeout(() => {
+      if (rendering) { savePending = true; return; }
+      commitHistory();
+      persist();
+    }, 600);
   }
 
   // Das geöffnete Projekt als eine Datei: Bilder und Schrift eingebettet.

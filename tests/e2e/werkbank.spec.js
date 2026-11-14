@@ -889,3 +889,52 @@ test("Team-Ablage: ablegen, in einem anderen Browser öffnen, Konflikt bemerken,
   await expect(page.locator("#teamlist li", { hasText: name })).toHaveCount(0);
   await other.context().close();
 });
+
+test("Speichern während eines Exports hält das gewählte Gerät und die Sprache fest, nicht die gerade gerenderten", async ({ page }) => {
+  await open(page);
+  await addShots(page, 2);
+  await page.locator("#deviceset").selectOption("tenInchScreenshots");
+  await page.locator("#file").setInputFiles([await png(page, "t1.png", { w: 1600, h: 2560 }), await png(page, "t2.png", { w: 1600, h: 2560 })]);
+  await page.locator("#deviceset").selectOption("phoneScreenshots");
+  await fillTexts(page);
+  await page.locator("#langmanage").click();
+  await page.locator("#langadd").selectOption("en-US");
+  await page.locator("#langaddbtn").click();
+  await page.locator("#langclose").click();
+  await page.locator("#langswitch").selectOption("de-DE");
+  await settle(page);
+  await page.locator("#tab-export").click();
+
+  // Eine Änderung genau vor dem Export: das automatische Speichern fällt in den Export hinein.
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.evaluate(() => {
+      const field = document.getElementById("mPackage");
+      field.value = "de.beispiel.export";
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+      // Den Export künstlich verlangsamen, damit das Speichern sicher mittendrin auslöst.
+      const toBlob = HTMLCanvasElement.prototype.toBlob;
+      HTMLCanvasElement.prototype.toBlob = function (cb, ...rest) {
+        setTimeout(() => toBlob.call(this, cb, ...rest), 150);
+      };
+      document.getElementById("zipmeta").click();
+    }),
+  ]);
+  expect(download.suggestedFilename()).toBe("play-listing-2-sprachen.zip");
+  await settle(page);
+
+  await page.reload();
+  await page.waitForSelector("html[data-ready]");
+  await expect(page.locator("#mPackage")).toHaveValue("de.beispiel.export");
+  await expect(page.locator("#langswitch")).toHaveValue("de-DE");
+  await page.locator("#tab-shots").click();
+  await expect(page.locator("#deviceset")).toHaveValue("phoneScreenshots");
+  await expect(page.locator(".shotrow")).toHaveCount(2);
+  // Und der Verlauf kennt keinen Zwischenstand aus dem Export.
+  await page.locator("#tab-text").click();
+  await page.locator("#mPackage").fill("de.beispiel.danach");
+  await settle(page);
+  await page.locator("#undo").click();
+  await expect(page.locator("#mPackage")).toHaveValue("de.beispiel.export");
+  await expect(page.locator("#langswitch")).toHaveValue("de-DE");
+});
