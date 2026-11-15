@@ -94,6 +94,7 @@ docs/
   assets/app.js         Logik, ohne Build-Schritt
   assets/fonts/         Schriften (SIL Open Font License)
   assets/vendor/        JSZip 3.10.1 (MIT)
+  assets/brand/         Logo, Favicon, App-Symbol
   _worker.js            Server-Teil bei Cloudflare: Zugangsschutz und /api/…
 tools/play-publish/     Upload-Skript mit Tests
 tools/deploy/           Konfiguration für das Ausliefern

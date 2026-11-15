@@ -113,6 +113,13 @@ test("läuft unter den Schutz-Headern und zeigt, wer angemeldet ist", async ({ p
   await expect(page.locator("#userbox")).toBeVisible();
   await expect(page.locator("#useremail")).toHaveText("test.nutzer@example.com");
   await expect(page.locator("#userbox a")).toHaveAttribute("href", "/cdn-cgi/access/logout");
+  // Das Logo kommt von der eigenen Seite und wird angezeigt.
+  expect(await page.locator(".brandmark").evaluate((img) => img.complete && img.naturalWidth)).toBe(192);
+  for (const href of await page.locator('link[rel="icon"], link[rel="apple-touch-icon"]').evaluateAll((links) => links.map((l) => l.href))) {
+    const res = await page.request.get(href);
+    expect(res.status(), href).toBe(200);
+    expect(res.headers()["content-type"]).toBe("image/png");
+  }
 });
 
 test("eigene Schrift lässt sich laden und wieder entfernen", async ({ page }) => {
@@ -124,6 +131,19 @@ test("eigene Schrift lässt sich laden und wieder entfernen", async ({ page }) =
   expect(await page.evaluate(() => document.fonts.check("700 20px ListingBrand"))).toBe(true);
   await page.locator("#fontclear").click();
   await expect(page.locator("#fontclear")).toBeHidden();
+});
+
+test("die Seite lädt zuverlässig, auch bei vielen frischen Aufrufen", async ({ browser }) => {
+  // Fängt Hänger beim Laden ab, die nur ab und zu auftreten: 12 Aufrufe in je
+  // einem neuen Browserprofil, jeder muss in wenigen Sekunden fertig sein.
+  test.setTimeout(120000);
+  for (let i = 0; i < 12; i++) {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto("/", { timeout: 8000 });
+    await page.waitForSelector("html[data-ready]", { timeout: 8000 });
+    await context.close();
+  }
 });
 
 test("Schritte lassen sich mit den Pfeiltasten wechseln", async ({ page }) => {
