@@ -200,6 +200,29 @@ des Mitglieds in den Logs des Pages-Projekts.
 Die Variable entfernen und neu ausliefern — der Türsteher lehnt die Funktion
 dann ab. Das zugehörige Secret zusätzlich im Pages-Projekt löschen.
 
+## Logo auf der Anmeldeseite
+
+Die Anmeldeseite von Cloudflare Access lädt ihr Logo über eine Adresse, die
+**ohne Anmeldung** erreichbar sein muss — sie wird ja gezeigt, bevor jemand
+angemeldet ist. Die Werkbank selbst liegt hinter Access und taugt dafür
+nicht.
+
+Solange dieses Repo öffentlich ist, geht die Adresse der Datei auf GitHub:
+
+```
+https://raw.githubusercontent.com/berrysystems/fastlane/main/docs/assets/brand/logo.png
+```
+
+In Zero Trust unter *Settings → Custom pages* (bzw. *Reusable components →
+Custom pages*) die **Login page** bearbeiten, die Adresse als **Logo URL**
+eintragen und speichern. Dort lassen sich auch Name, Hintergrundfarbe und
+Text der Seite anpassen — passend zum Logo zum Beispiel `#0F1318` als
+Hintergrund.
+
+Wird das Repo privat gestellt, ist das Logo unter dieser Adresse nicht mehr
+erreichbar. Dann die Datei an einem anderen öffentlichen Ort ablegen (etwa
+auf der Website von berry-systems.de) und die Adresse dort eintragen.
+
 ## Jemanden einladen
 
 1. Zero Trust → die Access-Anwendung der Werkbank → Richtlinie bearbeiten.

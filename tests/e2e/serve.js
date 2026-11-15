@@ -8,7 +8,7 @@ const ROOT = path.resolve(__dirname, "..", "..", "docs");
 const PORT = Number(process.env.PORT) || 4173;
 const TYPES = {
   ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8",
-  ".woff2": "font/woff2", ".txt": "text/plain; charset=utf-8", ".json": "application/json",
+  ".woff2": "font/woff2", ".png": "image/png", ".txt": "text/plain; charset=utf-8", ".json": "application/json",
 };
 
 // Dieselben Schutz-Header wie hinter Cloudflare, damit die Tests merken,
