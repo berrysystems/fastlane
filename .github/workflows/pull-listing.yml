@@ -18,9 +18,9 @@ jobs:
       run:
         working-directory: tools/play-publish
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -36,7 +36,7 @@ jobs:
           PACKAGE_NAME: ${{ vars.PACKAGE_NAME || secrets.PACKAGE_NAME }}
         run: node publish.js --pull --metadata "$RUNNER_TEMP/listing/fastlane/metadata/android"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: play-listing
           path: ${{ runner.temp }}/listing
