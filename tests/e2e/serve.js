@@ -19,13 +19,23 @@ const published = new Map();   // Paketname → Liste der Aufrufe
 const teamStore = new Map();   // Projektkennung → { body, meta }
 const worker = import("../../docs/_worker.js");
 
+// Cross-Origin-Opener-Policy lässt Firefox beim ersten Aufruf einer Seite in
+// einen neuen Prozess wechseln. Das Testwerkzeug verliert dabei gelegentlich
+// das Ende des Ladens, und der Test hängt bis zum Zeitlimit. Im echten Betrieb
+// bleibt der Header gesetzt; hier fehlt er, weil kein Test ihn braucht.
+const headersFor = (security) => {
+  const headers = { ...security };
+  delete headers["Cross-Origin-Opener-Policy"];
+  return headers;
+};
+
 http.createServer(async (req, res) => {
   const { SECURITY_HEADERS, USER_COOKIE } = (await worker).default.internals;
   const url = new URL(req.url, "http://localhost");
   // ---- Nachgestellter Server-Teil: dieselben Aufrufe und Meldungen wie docs/_worker.js
   if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/__test/")) {
     const reply = (status, body, extra = {}) => {
-      res.writeHead(status, { ...SECURITY_HEADERS, "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...extra });
+      res.writeHead(status, { ...headersFor(SECURITY_HEADERS), "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...extra });
       res.end(typeof body === "string" ? body : JSON.stringify(body));
     };
     const q = url.searchParams, pkg = q.get("package") || "";
@@ -99,7 +109,7 @@ http.createServer(async (req, res) => {
   if (file !== ROOT && !file.startsWith(ROOT + path.sep)) { res.writeHead(403).end(); return; }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404).end("Nicht gefunden"); return; }
-    const headers = { ...SECURITY_HEADERS, "Content-Type": TYPES[path.extname(file)] || "application/octet-stream", "Cache-Control": "no-store" };
+    const headers = { ...headersFor(SECURITY_HEADERS), "Content-Type": TYPES[path.extname(file)] || "application/octet-stream", "Cache-Control": "no-store" };
     delete headers["Strict-Transport-Security"];          // der Testserver spricht nur HTTP
     if (file.endsWith(".html")) headers["Set-Cookie"] = `${USER_COOKIE}=${encodeURIComponent(TEST_USER)}; Path=/; SameSite=Strict`;
     res.writeHead(200, headers);
